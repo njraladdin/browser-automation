@@ -1,0 +1,17 @@
+{
+  "name": "browser-automation",
+  "version": "1.0.0",
+  "description": "",
+  "main": "automation.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js",
+    "build:css": "tailwindcss -i ./public/css/styles.css -o ./public/css/output.css --watch"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.21.2",
+    "puppeteer": "^23.11.1"
+  }
+}
