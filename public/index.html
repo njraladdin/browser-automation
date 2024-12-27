@@ -98,6 +98,10 @@
             <div class="step-input-container">
               <input type="text" value="${step.instructions}" class="step-input" readonly />
             </div>
+            ${step.screenshot 
+              ? `<img src="${step.screenshot}" alt="Step ${index + 1} result" class="step-screenshot" />`
+              : `<div class="step-screenshot">No screenshot yet</div>`
+            }
           </div>
           <div class="code-block">
             <div class="code-content">${step.code}</div>
@@ -136,7 +140,6 @@
       const playButton = document.getElementById('playButton');
       const btnText = playButton.querySelector('.btn-text');
       
-      // Show loading state
       playButton.classList.add('loading');
       btnText.textContent = 'Running...';
       
@@ -148,6 +151,7 @@
         const data = await response.json();
         if (data.success) {
           lastExecutedStep = data.lastExecutedStep;
+          steps = data.steps;
           updateStepsList();
           showStatus('Steps executed successfully!');
         } else {
@@ -156,7 +160,6 @@
       } catch (error) {
         showStatus(`Error: ${error.message}`);
       } finally {
-        // Reset button state
         playButton.classList.remove('loading');
         btnText.textContent = 'Start Automation';
       }
