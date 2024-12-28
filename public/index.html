@@ -5,33 +5,26 @@
   <link href="/css/styles.css" rel="stylesheet">
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <div class="header-left">
-        <h1>Web Automation Builder</h1>
-        <div class="status" id="status"></div>
-      </div>
-      <div class="control-panel">
-        <button onclick="executeSteps()" class="btn btn-primary automation-btn" id="playButton">
-          <span class="btn-icon">▶</span>
-          <span class="btn-text">Start Automation</span>
-          <span class="btn-loader"></span>
-        </button>
-        <button onclick="resetExecution()" class="btn btn-secondary">
-          <span class="btn-icon">↺</span> Reset
-        </button>
-        <button onclick="clearSteps()" class="btn btn-secondary">
-          <span class="btn-icon">✕</span> Clear All
-        </button>
-      </div>
+  <div class="header">
+    <div>
+      <h1>Web Automation Builder</h1>
     </div>
-
-    <main class="main-content">
-      <div class="steps-container">
-        <div id="stepsList" class="steps-list"></div>
-      </div>
-    </main>
+    <div>
+      <button onclick="executeSteps()" class="btn btn-primary" id="playButton" title="Run automation from where it left off">
+        <span class="btn-text">▶ Play Automation</span>
+      </button>
+      <button onclick="resetExecution()" class="btn" title="Reset progress to start">
+        Reset Progress
+      </button>
+      <button onclick="clearSteps()" class="btn" title="Delete all automation steps">
+        Delete All
+      </button>
+    </div>
   </div>
+
+  <div id="stepsList"></div>
+
+  <div id="status" class="status"></div>
 
   <script>
     let steps = [];
@@ -51,6 +44,7 @@
       const instructions = input.value;
       const stepBlock = document.querySelector(`#step-${stepNumber}`);
       const addButton = stepBlock.querySelector('.btn-primary');
+      const playButton = document.getElementById('playButton');
       
       // Disable the input and button, show loading state
       input.disabled = true;
@@ -70,6 +64,8 @@
           updateStepsList();
           showStatus('Step added successfully!');
           stepBlock.classList.remove('loading');
+          // Enable play button when steps exist
+          playButton.disabled = false;
         } else {
           showStatus(`Error: ${data.error}`);
           // Re-enable the input and button if there's an error
@@ -88,32 +84,30 @@
 
     function updateStepsList() {
       const stepsList = document.getElementById('stepsList');
+      const playButton = document.getElementById('playButton');
+      
+      // Disable play button if there are no steps
+      playButton.disabled = steps.length === 0;
+      
+      // Update button text based on execution state
+      const buttonText = lastExecutedStep >= 0 ? '▶ Continue Automation' : '▶ Play Automation';
+      playButton.querySelector('.btn-text').textContent = buttonText;
       
       const stepsHtml = steps.map((step, index) => `
         <div class="step-block ${index <= lastExecutedStep ? 'executed' : ''}" id="step-${index + 1}">
-          <div class="step-marker ${index <= lastExecutedStep ? 'executed' : ''} ${index === lastExecutedStep + 1 ? 'current' : ''}"></div>
-          <div class="step-line ${index <= lastExecutedStep ? 'executed' : ''}"></div>
           <div class="step-content">
-            <div class="step-number ${index <= lastExecutedStep ? 'executed' : ''}">${index + 1}</div>
-            <div class="step-input-container">
-              <input type="text" value="${step.instructions}" class="step-input" readonly />
-            </div>
-            ${step.screenshot 
-              ? `<img src="${step.screenshot}" alt="Step ${index + 1} result" class="step-screenshot" />`
-              : `<div class="step-screenshot">No screenshot yet</div>`
-            }
+            <div class="step-number">${index + 1}</div>
+            <input type="text" value="${step.instructions}" class="step-input" readonly />
           </div>
           <div class="code-block">
-            <div class="code-content">${step.code}</div>
+            ${step.code}
           </div>
         </div>
       `).join('');
 
       const newStepNumber = steps.length + 1;
       const newStepHtml = `
-        <div class="step-block new-step" id="step-${newStepNumber}">
-          <div class="step-marker"></div>
-          <div class="step-line"></div>
+        <div class="step-block" id="step-${newStepNumber}">
           <div class="step-content">
             <div class="step-number">${newStepNumber}</div>
             <div class="step-input-container">
@@ -130,6 +124,16 @@
               Add
             </button>
           </div>
+          ${newStepNumber === 1 ? `
+            <div class="help-text">
+              <p>💡 Examples of what you can type:</p>
+              <ul>
+                <li>"Go to wikipedia.org"</li>
+                <li>"Type 'Hello' in the message field"</li>
+                <li>"Click the Subscribe button"</li>
+              </ul>
+            </div>
+          ` : ''}
         </div>
       `;
 
@@ -138,10 +142,15 @@
 
     async function executeSteps() {
       const playButton = document.getElementById('playButton');
-      const btnText = playButton.querySelector('.btn-text');
+      playButton.disabled = true;
+      playButton.querySelector('.btn-text').textContent = '⏳ Running...';
       
-      playButton.classList.add('loading');
-      btnText.textContent = 'Running...';
+      // Find the first unexecuted step
+      const nextStepIndex = lastExecutedStep + 1;
+      const nextStep = document.querySelector(`#step-${nextStepIndex + 1}`);
+      if (nextStep) {
+        nextStep.classList.add('executing');
+      }
       
       try {
         const response = await fetch('/execute', {
@@ -154,14 +163,26 @@
           steps = data.steps;
           updateStepsList();
           showStatus('Steps executed successfully!');
+          
+          // Disable play button if all steps are executed
+          playButton.disabled = lastExecutedStep >= steps.length - 1;
         } else {
-          showStatus(`Error: ${data.error}`);
+          showStatus(`Error: ${data.error}`, 'error');
+          playButton.disabled = false;
         }
       } catch (error) {
-        showStatus(`Error: ${error.message}`);
+        showStatus(`Error: ${error.message}`, 'error');
+        playButton.disabled = false;
       } finally {
-        playButton.classList.remove('loading');
-        btnText.textContent = 'Start Automation';
+        // Update button text based on execution state when done
+        const buttonText = lastExecutedStep >= 0 ? '▶ Continue Automation' : '▶ Play Automation';
+        playButton.querySelector('.btn-text').textContent = buttonText;
+        
+        // Remove executing class
+        const executingStep = document.querySelector('.executing');
+        if (executingStep) {
+          executingStep.classList.remove('executing');
+        }
       }
     }
 
@@ -172,25 +193,32 @@
 
     async function resetExecution() {
       const status = document.getElementById('status');
+      const playButton = document.getElementById('playButton');
       
       try {
         await fetch('/reset-execution', { method: 'POST' });
         lastExecutedStep = -1;
         updateStepsList();
         status.textContent = 'Execution reset to beginning';
+        playButton.disabled = false; // Re-enable play button after reset
       } catch (error) {
         status.textContent = `Error: ${error.message}`;
       }
     }
 
     async function clearSteps() {
+      if (!confirm('Are you sure you want to delete all steps? This cannot be undone.')) {
+        return;
+      }
       const status = document.getElementById('status');
+      const playButton = document.getElementById('playButton');
       
       try {
         await fetch('/clear', { method: 'POST' });
         steps = [];
         updateStepsList();
         status.textContent = 'All steps cleared';
+        playButton.disabled = false; // Re-enable play button after clearing
       } catch (error) {
         status.textContent = `Error: ${error.message}`;
       }
@@ -207,15 +235,15 @@
       }
     }
 
-    function showStatus(message) {
+    function showStatus(message, type = 'success') {
       const status = document.getElementById('status');
-      if (!status) return; // Guard clause
+      if (!status) return;
       
       status.textContent = message;
-      status.classList.add('visible');
+      status.className = `status visible ${type}`;
       
       setTimeout(() => {
-        status.classList.remove('visible');
+        status.className = 'status';
       }, 3000);
     }
   </script>

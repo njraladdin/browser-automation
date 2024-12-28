@@ -1,50 +1,78 @@
 const puppeteer = require('puppeteer');
 require('dotenv').config();
 const cheerio = require('cheerio');
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { analyzePage } = require('./pageAnalyzer');
+const path = require('path');
+const fs = require('fs');
 
 let browser = null;
 let page = null;
 let automationSteps = [];
 let lastExecutedStepIndex = -1;
+let genAI = null;
+let model = null;
+
+// Initialize browser immediately
+(async () => {
+  try {
+    console.log('Launching browser...');
+    browser = await puppeteer.launch({ 
+      headless: false,
+      defaultViewport: {
+        width: 1280,
+        height: 800
+      }
+    });
+    page = await browser.newPage();
+    console.log('Browser ready for use');
+  } catch (error) {
+    console.error('Failed to launch browser:', error);
+  }
+})();
+
+// Initialize Gemini API (add this right after browser initialization)
+try {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY not found in environment variables');
+  }
+  genAI = new GoogleGenerativeAI(apiKey);
+  model = genAI.getGenerativeModel({
+    model: "gemini-1.5-pro",
+    generationConfig: {
+      temperature: 0.7,
+      topP: 0.95,
+      topK: 40,
+      maxOutputTokens: 8192,
+    }
+  });
+  console.log('Gemini API initialized successfully');
+} catch (error) {
+  console.error('Failed to initialize Gemini API:', error);
+}
 
 async function generatePuppeteerCode(systemPrompt) {
-
-  
   try {
-    const API_KEY = process.env.GEMINI_API_KEY;
-    if (!API_KEY) {
-      throw new Error('GEMINI_API_KEY not found in environment variables');
+    if (!model) {
+      throw new Error('Gemini API not initialized');
     }
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-exp-1206:generateContent?key=${API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: systemPrompt }] }],
-          generationConfig: {
-            temperature: 0.7,
-            topK: 40,
-            topP: 0.95,
-            maxOutputTokens: 8192,
-          }
-        })
-      }
-    );
-
-    const data = await response.json();
-    if (!data.candidates || !data.candidates[0]) {
-      throw new Error('Invalid response from Gemini API');
+    const result = await model.generateContent(systemPrompt);
+    const response = await result.response;
+    const text = response.text();
+    
+    if (!text) {
+      throw new Error('Empty response from Gemini API');
     }
 
-    return data.candidates[0].content.parts[0].text.trim()
+    return text.trim()
       .replace(/```javascript\n?/g, '')
       .replace(/```\n?/g, '');
 
   } catch (error) {
-    console.error('Failed to generate code:', error);
-    throw error;
+    console.error('Gemini API error:', error);
+    throw new Error(`Failed to generate code: ${error.message}`);
   }
 }
 
@@ -63,57 +91,68 @@ async function initBrowser() {
   return { browser, page };
 }
 
+async function savePromptForDebug(prompt, instructions) {
+  const testDir = path.join(__dirname, 'test');
+  if (!fs.existsSync(testDir)) {
+    fs.mkdirSync(testDir);
+  }
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  fs.writeFileSync(
+    path.join(testDir, `prompt_${timestamp}.txt`),
+    `Instructions: ${instructions}\n\nFull Prompt:\n${prompt}`,
+    'utf8'
+  );
+}
+
 async function addAutomationStep(instructions) {
   try {
     console.log('Generating code for new step...');
     
-    // Get previous step's context if available
-    let previousContext = null;
-    if (lastExecutedStepIndex >= 0) {
-      const fs = require('fs');
-      const path = require('path');
-      const testDir = path.join(__dirname, 'test');
-      
-      try {
-        const previousHtml = fs.readFileSync(
-          path.join(testDir, `step_${lastExecutedStepIndex + 1}.html`),
-          'utf8'
-        );
-        const previousMap = JSON.parse(fs.readFileSync(
-          path.join(testDir, `step_${lastExecutedStepIndex + 1}_map.json`),
-          'utf8'
-        ));
-        
-        previousContext = {
-          html: previousHtml,
-          pageMap: previousMap
-        };
-      } catch (err) {
-        console.log('No previous step context available');
-      }
+    // Get current page context if browser is running
+    let currentContext = null;
+    if (browser && page) {
+      const pageSource = await page.content();
+      currentContext = await analyzePage(pageSource);
     }
 
-    // Modify the system prompt to include previous context
-    const systemPrompt = `You are a Puppeteer code generator. Generate ONLY the JavaScript code without any explanations, markdown formatting, or code block markers. The code should work with Puppeteer.
+    // Create history of previous steps
+    const previousSteps = automationSteps.map((step, index) => `
+Step ${index + 1}: ${step.instructions}
+Code:
+${step.code}
+`).join('\n');
+
+    const systemPrompt = `You are a Puppeteer code generator. Generate ONLY the executable code without any function declarations or wrappers.
 
 Requirements:
 - Use modern JavaScript syntax with async/await
-- Include error handling with try/catch
+- Always wrap code in try/catch
 - Add clear console.log statements for progress tracking
 - Use Puppeteer's API (page.click, page.type, etc.)
-- Return ONLY the raw JavaScript code, no markdown, no \`\`\`, no explanations
-- DO NOT include browser launch or page creation code
-- DO NOT close the browser
+- Return ONLY the code that will be executed (no functions, no classes)
+- For navigation, use page.goto() with proper error handling
+Example code:
+try {
+  console.log('Navigating to URL...');
+  await page.goto('https://example.com');
+  console.log('Navigation successful');
+} catch (error) {
+  console.error('Navigation failed:', error);
+  throw error;
+}
+${previousSteps ? `Previous automation steps:
+${previousSteps}` : ''}
 
-${previousContext ? `
-Current page context:
-HTML: ${previousContext.html}
-
-Page Structure Map:
-${JSON.stringify(previousContext.pageMap, null, 2)}
+${currentContext ? `
+Available Interactive Elements:
+${JSON.stringify(currentContext.interactive, null, 2)}
 ` : ''}
 
 User Instructions: ${instructions}`;
+
+    // Save prompt for debugging
+    await savePromptForDebug(systemPrompt, instructions);
 
     const code = await generatePuppeteerCode(systemPrompt);
     automationSteps.push({ instructions, code });
@@ -122,144 +161,6 @@ User Instructions: ${instructions}`;
     console.error('Failed to add step:', error);
     return { success: false, error: error.message };
   }
-}
-
-async function generatePageMap($) {
-  const pageMap = {
-    title: $('title').text(),
-    forms: [],
-    links: [],
-    buttons: [],
-    inputs: [],
-    structure: []
-  };
-
-  // Map forms
-  $('form').each((i, form) => {
-    const formInfo = {
-      id: $(form).attr('id') || `form_${i}`,
-      action: $(form).attr('action'),
-      method: $(form).attr('method'),
-      inputs: $(form).find('input, select, textarea').map((_, el) => ({
-        type: $(el).attr('type') || el.tagName.toLowerCase(),
-        name: $(el).attr('name'),
-        id: $(el).attr('id'),
-        placeholder: $(el).attr('placeholder')
-      })).get()
-    };
-    pageMap.forms.push(formInfo);
-  });
-
-  // Map clickable elements
-  $('a').each((i, link) => {
-    pageMap.links.push({
-      text: $(link).text().trim(),
-      href: $(link).attr('href'),
-      id: $(link).attr('id'),
-      class: $(link).attr('class')
-    });
-  });
-
-  $('button').each((i, button) => {
-    pageMap.buttons.push({
-      text: $(button).text().trim(),
-      id: $(button).attr('id'),
-      type: $(button).attr('type'),
-      class: $(button).attr('class')
-    });
-  });
-
-  // Map input fields
-  $('input, select, textarea').each((i, input) => {
-    if (!$(input).closest('form').length) { // Only include inputs not already captured in forms
-      pageMap.inputs.push({
-        type: $(input).attr('type') || input.tagName.toLowerCase(),
-        name: $(input).attr('name'),
-        id: $(input).attr('id'),
-        placeholder: $(input).attr('placeholder')
-      });
-    }
-  });
-
-  // Generate simplified DOM structure
-  function generateStructure(element) {
-    const $el = $(element);
-    const children = $el.children().map((_, child) => generateStructure(child)).get();
-    
-    return {
-      tag: element.tagName.toLowerCase(),
-      id: $el.attr('id') || undefined,
-      class: $el.attr('class') || undefined,
-      type: $el.attr('type') || undefined,
-      text: $el.text().trim().substring(0, 100) || undefined,
-      children: children.length ? children : undefined
-    };
-  }
-
-  pageMap.structure = generateStructure($('body')[0]);
-
-  return pageMap;
-}
-
-async function cleanupHtml(html) {
-  const $ = cheerio.load(html, {
-    decodeEntities: true,
-    xmlMode: false
-  });
-
-  // Remove unwanted elements
-  $('script').remove();
-  $('style').remove();
-  $('link[rel="stylesheet"]').remove();
-  $('meta').remove();
-  $('svg').remove();
-  
-  // Define whitelist of allowed attributes
-  const allowedAttributes = new Set([
-    'class',
-    'href',
-    'src',
-    'id',
-    'type',
-    'value',
-    'title',
-    'alt',
-    'name',
-    'placeholder',
-    'role',
-    'aria-label',
-    'target',
-    'rel',
-    'for',
-    'action',
-    'method'
-  ]);
-
-  // Clean all elements
-  $('*').each((i, el) => {
-    if (el.attribs) {
-      Object.keys(el.attribs).forEach(attr => {
-        // Remove attribute if it's not in the whitelist
-        if (!allowedAttributes.has(attr.toLowerCase())) {
-          $(el).removeAttr(attr);
-        }
-      });
-    }
-  });
-
-  // Get cleaned HTML and normalize whitespace
-  let cleanedHtml = $.root().html()
-    .replace(/^\s*[\r\n]/gm, '')
-    .replace(/\s+$/gm, '')
-    .replace(/\n\s*\n\s*\n/g, '\n\n');
-
-  // Generate page map before cleaning
-  const pageMap = await generatePageMap($);
-
-  return {
-    html: cleanedHtml,
-    pageMap: pageMap
-  };
 }
 
 async function delay(ms) {
@@ -279,61 +180,13 @@ async function executeCurrentSteps() {
       const step = automationSteps[i];
       console.log(`Executing step ${i + 1}: ${step.instructions}`);
       
-      // Create a promise that resolves on navigation
-      const navigationPromise = page.waitForNavigation({ 
-        waitUntil: 'networkidle0',
-        timeout: 30000 
-      }).catch(() => {
-        // If no navigation occurs, this promise will be rejected, which is fine
-        console.log('No navigation occurred during this step');
-      });
-
       // Execute the step
       const stepFunction = new Function('page', `return (async (page) => {
         ${step.code}
       })(page)`);
 
       await stepFunction(page);
-      
-      // Wait for any navigation to complete
-      await navigationPromise;
-      
-      // Add a small delay to ensure page is stable
-      await delay(1000);
-      
-      // Take screenshot and convert to base64
-      const screenshot = await page.screenshot({ 
-        fullPage: false,
-        encoding: 'base64'
-      });
-      automationSteps[i].screenshot = `data:image/png;base64,${screenshot}`;
-      
-      // Get page source and clean it
-      const pageSource = await page.content();
-      const { html: cleanedSource, pageMap } = await cleanupHtml(pageSource);
-      
-      // Ensure test directory exists
-      const fs = require('fs');
-      const path = require('path');
-      const testDir = path.join(__dirname, 'test');
-      
-      if (!fs.existsSync(testDir)){
-        fs.mkdirSync(testDir);
-      }
-      
-      // Save cleaned HTML to file
-      fs.writeFileSync(
-        path.join(testDir, `step_${i + 1}.html`),
-        cleanedSource,
-        'utf8'
-      );
-
-      // Save page map to JSON file
-      fs.writeFileSync(
-        path.join(testDir, `step_${i + 1}_map.json`),
-        JSON.stringify(pageMap, null, 2),
-        'utf8'
-      );
+      await delay(1000); // Small delay for stability
       
       lastExecutedStepIndex = i;
     }
