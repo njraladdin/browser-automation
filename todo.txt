@@ -1,9 +1,12 @@
-simplfy ui : only buton we need is play step (jumps form step to step, always on latst readstep, to stest it upon ready), and restart play all 
+
+
+
+
+being able to see and extract data on a page not just interative elements 
 
 
 save autoamtion flow 
+being able to rerun a step 
 
 
 test by extrracintg listings from airbnb / extract list of followers on instagram 
-
-being able to select a specific element on the page ismilar ot the extension 

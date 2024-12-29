@@ -1,10 +1,12 @@
 const puppeteer = require('puppeteer');
 require('dotenv').config();
-const cheerio = require('cheerio');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
-const { analyzePage } = require('./pageAnalyzer');
+const PageSnapshot = require('./PageSnapshot');
 const path = require('path');
 const fs = require('fs');
+
+// Create a single instance of PageSnapshot to reuse
+const pageSnapshot = new PageSnapshot();
 
 let browser = null;
 let page = null;
@@ -39,7 +41,7 @@ try {
   }
   genAI = new GoogleGenerativeAI(apiKey);
   model = genAI.getGenerativeModel({
-    model: "gemini-1.5-pro",
+    model: "gemini-2.0-flash-exp",
     generationConfig: {
       temperature: 0.7,
       topP: 0.95,
@@ -109,12 +111,19 @@ async function addAutomationStep(instructions) {
   try {
     console.log('Generating code for new step...');
     
-    // Get current page context if browser is running
-    let currentContext = null;
-    if (browser && page) {
-      const pageSource = await page.content();
-      currentContext = await analyzePage(pageSource);
+    // Check if browser exists first
+    if (!browser) {
+      throw new Error('Browser is not initialized. Cannot proceed with automation.');
     }
+
+    // Get current page or create new one if needed
+    if (!page) {
+      page = await browser.newPage();
+      console.log('Created new browser page');
+    }
+
+    // Now we can safely capture the snapshot
+    const snapshot = await pageSnapshot.captureSnapshot(page);
 
     // Create history of previous steps
     const previousSteps = automationSteps.map((step, index) => `
@@ -128,26 +137,44 @@ ${step.code}
 Requirements:
 - Use modern JavaScript syntax with async/await
 - Always wrap code in try/catch
-- Add clear console.log statements for progress tracking
-- Use Puppeteer's API (page.click, page.type, etc.)
-- Return ONLY the code that will be executed (no functions, no classes)
-- For navigation, use page.goto() with proper error handling
-Example code:
+- Add clear console.log statements
+- Return ONLY executable code
+- For elements with shadowPath:
+  1. Use page.evaluate() to focus the element
+  2. For typing, use page.keyboard.type() after focusing
+- For regular elements: use normal page methods with minimal selectors
+
+Example using element with shadowPath:
 try {
-  console.log('Navigating to URL...');
-  await page.goto('https://example.com');
-  console.log('Navigation successful');
+  console.log('Typing in input field');
+  await page.evaluate(() => {
+    const input = document.querySelector('reddit-search-large')
+      ?.shadowRoot?.querySelector('faceplate-search-input')
+      ?.shadowRoot?.querySelector('input');
+    input.focus();
+  });
+  await page.keyboard.type('text', {delay: 50});
 } catch (error) {
-  console.error('Navigation failed:', error);
+  console.error('Failed to type text:', error);
   throw error;
 }
+
+Example using regular element:
+try {
+  console.log('Clicking button');
+  await page.click('@btn_0');
+} catch (error) {
+  console.error('Failed to click button:', error);
+  throw error;
+}
+
+Current Page URL: ${snapshot.url}
+-you can use the given interactive elements map where you are provided each element on the page and it's selector so you can interact with them. you are only allowed to use the given selectors for the elements on the page. DO NOT USE ANY OTHER SELECTORS. use the interactive map as a guide.
+Available Interactive Elements:
+${JSON.stringify(snapshot.interactive, null, 2)}
+
 ${previousSteps ? `Previous automation steps:
 ${previousSteps}` : ''}
-
-${currentContext ? `
-Available Interactive Elements:
-${JSON.stringify(currentContext.interactive, null, 2)}
-` : ''}
 
 User Instructions: ${instructions}`;
 
@@ -155,8 +182,11 @@ User Instructions: ${instructions}`;
     await savePromptForDebug(systemPrompt, instructions);
 
     const code = await generatePuppeteerCode(systemPrompt);
-    automationSteps.push({ instructions, code });
-    return { success: true, code };
+    console.log(code)
+    const finalCode = pageSnapshot.replaceMinimalSelectors(code);
+    automationSteps.push({ instructions, code: finalCode });
+    
+    return { success: true, code: finalCode };
   } catch (error) {
     console.error('Failed to add step:', error);
     return { success: false, error: error.message };
