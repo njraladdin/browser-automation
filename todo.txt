@@ -1,12 +1,17 @@
 
 
 
+test without the sekeleton view 
+test with image 
 
 being able to see and extract data on a page not just interative elements 
 
 
-save autoamtion flow 
-being able to rerun a step 
 
 
 test by extrracintg listings from airbnb / extract list of followers on instagram 
+
+
+
+save autoamtion flow 
+being able to rerun a step 

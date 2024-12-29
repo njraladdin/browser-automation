@@ -111,21 +111,17 @@ async function addAutomationStep(instructions) {
   try {
     console.log('Generating code for new step...');
     
-    // Check if browser exists first
     if (!browser) {
       throw new Error('Browser is not initialized. Cannot proceed with automation.');
     }
 
-    // Get current page or create new one if needed
     if (!page) {
       page = await browser.newPage();
       console.log('Created new browser page');
     }
 
-    // Now we can safely capture the snapshot
     const snapshot = await pageSnapshot.captureSnapshot(page);
 
-    // Create history of previous steps
     const previousSteps = automationSteps.map((step, index) => `
 Step ${index + 1}: ${step.instructions}
 Code:
@@ -162,7 +158,7 @@ try {
 Example using regular element:
 try {
   console.log('Clicking button');
-  await page.click('@btn_0');
+  await page.click('button[type="submit"]');
 } catch (error) {
   console.error('Failed to click button:', error);
   throw error;
@@ -178,15 +174,14 @@ ${previousSteps}` : ''}
 
 User Instructions: ${instructions}`;
 
-    // Save prompt for debugging
     await savePromptForDebug(systemPrompt, instructions);
 
     const code = await generatePuppeteerCode(systemPrompt);
-    console.log(code)
-    const finalCode = pageSnapshot.replaceMinimalSelectors(code);
-    automationSteps.push({ instructions, code: finalCode });
+    console.log(code);
     
-    return { success: true, code: finalCode };
+    automationSteps.push({ instructions, code });
+    
+    return { success: true, code };
   } catch (error) {
     console.error('Failed to add step:', error);
     return { success: false, error: error.message };

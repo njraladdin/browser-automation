@@ -66,10 +66,10 @@ class PageSnapshot {
     this.snapshot.html = this.getCleanedHtml();
 
     // Generate analysis data
-    const { view: interactiveView, selectorMap } = await this.generateInteractiveView(page);
+    const { view: interactiveView } = await this.generateInteractiveView(page);
     this.snapshot.fullInteractive = interactiveView;
-    this.snapshot.interactive = this.getMinimalInteractiveView(interactiveView);
-    this.snapshot.selectorMap = selectorMap;
+    this.snapshot.interactive = interactiveView;
+    this.snapshot.selectorMap = {};
     
     // Set timestamp
     this.snapshot.timestamp = new Date().toISOString();
@@ -133,28 +133,18 @@ class PageSnapshot {
       textContent: []
     };
 
-    // Create a mapping between minimal and full selectors
-    const selectorMap = new Map();
-
-    // Function to parse shadow DOM content for interactive elements
+    // Modify the shadow DOM parsing section
     const parseShadowContent = (shadowTree, parentPath = '') => {
-      // Create a temporary DOM element to parse the shadow content
       const temp = this.$('<div>').html(shadowTree.content);
-      
       const currentPath = `${parentPath} > ${shadowTree.hostElement.tagName} > shadow-root`;
 
-      // Find interactive elements in this shadow tree
       temp.find('input, textarea, select').each((_, el) => {
         const $el = this.$(el);
         const selector = `${shadowTree.hostElement.tagName} > input[type="${$el.attr('type')}"]`;
-        const minimalSelector = this.generateMinimalSelector(interactiveView.inputs.length, 'input');
-        
-        selectorMap.set(minimalSelector, selector);
         
         interactiveView.inputs.push({
           type: $el.attr('type') || el.tagName.toLowerCase(),
-          selector: minimalSelector,
-          fullSelector: selector,
+          selector: selector, // Just use the full selector directly
           placeholder: $el.attr('placeholder'),
           id: $el.attr('id'),
           role: $el.attr('role'),
@@ -165,15 +155,14 @@ class PageSnapshot {
         });
       });
 
-      // Process buttons
+      // Similar changes for buttons in shadow DOM
       temp.find('button, [role="button"]').each((_, el) => {
         const $el = this.$(el);
         const selector = `${shadowTree.hostElement.tagName} > button`;
         
         interactiveView.buttons.push({
           text: $el.text().trim(),
-          selector: this.generateMinimalSelector(interactiveView.buttons.length, 'btn'),
-          fullSelector: selector,
+          selector: selector, // Just use the full selector directly
           type: $el.attr('type'),
           id: $el.attr('id'),
           role: $el.attr('role'),
@@ -183,7 +172,7 @@ class PageSnapshot {
         });
       });
 
-      // Process links
+      // Similar changes for links in shadow DOM
       temp.find('a').each((_, el) => {
         const $el = this.$(el);
         const selector = `${shadowTree.hostElement.tagName} > a`;
@@ -191,8 +180,7 @@ class PageSnapshot {
         interactiveView.links.push({
           text: $el.text().trim(),
           href: $el.attr('href'),
-          selector: this.generateMinimalSelector(interactiveView.links.length, 'link'),
-          fullSelector: selector,
+          selector: selector, // Just use the full selector directly
           id: $el.attr('id'),
           role: $el.attr('role'),
           'aria-label': $el.attr('aria-label'),
@@ -200,7 +188,6 @@ class PageSnapshot {
         });
       });
 
-      // Recursively process nested shadow trees
       shadowTree.shadowTrees.forEach(nestedTree => {
         parseShadowContent(nestedTree, currentPath);
       });
@@ -214,19 +201,15 @@ class PageSnapshot {
     // Then process regular DOM elements
     this.$('input, textarea, select, [type="search"], [contenteditable="true"], faceplate-search-input, *[role="searchbox"], *[role="textbox"]').each((index, el) => {
       const $el = this.$(el);
-      const fullSelector = this.generateSelector($el);
-      const minimalSelector = this.generateMinimalSelector(interactiveView.inputs.length, 'input');
-      selectorMap.set(minimalSelector, fullSelector);
+      const selector = this.generateSelector($el);
 
-      // Get attributes, checking both the element and its first child if it's a custom element
       const getAttr = (attr) => {
         return $el.attr(attr) || $el.find(`[${attr}]`).first().attr(attr);
       };
 
       interactiveView.inputs.push({
         type: getAttr('type') || el.tagName.toLowerCase(),
-        selector: minimalSelector,
-        fullSelector: fullSelector,
+        selector: selector, // Just use the full selector directly
         placeholder: getAttr('placeholder'),
         id: getAttr('id'),
         role: getAttr('role'),
@@ -240,14 +223,11 @@ class PageSnapshot {
     // Process regular buttons
     this.$('button, [role="button"]').each((index, el) => {
       const $el = this.$(el);
-      const fullSelector = this.generateSelector($el);
-      const minimalSelector = this.generateMinimalSelector(interactiveView.buttons.length, 'btn');
-      selectorMap.set(minimalSelector, fullSelector);
+      const selector = this.generateSelector($el);
 
       interactiveView.buttons.push({
         text: $el.text().trim(),
-        selector: minimalSelector,
-        fullSelector: fullSelector,
+        selector: selector, // Just use the full selector directly
         type: $el.attr('type'),
         id: $el.attr('id'),
         role: $el.attr('role'),
@@ -259,15 +239,12 @@ class PageSnapshot {
     // Process regular links
     this.$('a').each((index, el) => {
       const $el = this.$(el);
-      const fullSelector = this.generateSelector($el);
-      const minimalSelector = this.generateMinimalSelector(interactiveView.links.length, 'link');
-      selectorMap.set(minimalSelector, fullSelector);
+      const selector = this.generateSelector($el);
 
       interactiveView.links.push({
         text: $el.text().trim(),
         href: $el.attr('href'),
-        selector: minimalSelector,
-        fullSelector: fullSelector,
+        selector: selector, // Just use the full selector directly
         id: $el.attr('id'),
         role: $el.attr('role'),
         'aria-label': $el.attr('aria-label')
@@ -275,26 +252,8 @@ class PageSnapshot {
     });
 
     return {
-      view: interactiveView,
-      selectorMap: Object.fromEntries(selectorMap)
+      view: interactiveView
     };
-  }
-
-  generateMinimalSelector(index, elementType) {
-    // Return with quotes to ensure exact matching
-    return `'__SELECTOR__${elementType}_${index}__'`;
-  }
-
-  getMinimalInteractiveView(interactiveView) {
-    const minimalView = JSON.parse(JSON.stringify(interactiveView));
-    ['inputs', 'buttons', 'links'].forEach(type => {
-      if (minimalView[type]) {
-        minimalView[type].forEach(element => {
-          delete element.fullSelector;
-        });
-      }
-    });
-    return minimalView;
   }
 
   generateSelector($el) {
@@ -395,59 +354,6 @@ class PageSnapshot {
 
     console.log(`Debug files saved with timestamp: ${timestamp}`);
     return timestamp;
-  }
-
-  replaceMinimalSelectors(code) {
-    if (!this.snapshot.interactive) {
-      console.log('No interactive view found!');
-      return code;
-    }
-
-    let modifiedCode = code;
-    
-    // Debug logs
-    console.log('\n=== Debug Info ===');
-    console.log('Original code:', code);
-    console.log('Interactive view:', JSON.stringify(this.snapshot.interactive, null, 2));
-    
-    // Find all minimal selectors in the code
-    const selectorPattern = /'?__SELECTOR__([a-z]+)_(\d+)__'?/g;
-    const matches = [...code.matchAll(selectorPattern)];
-    
-    console.log('\nFound matches:', matches);
-
-    for (const match of matches) {
-      const minimalSelector = match[0].replace(/'/g, '');  // Remove quotes if present
-      const type = match[1];     // 'link', 'btn', 'input'
-      const index = parseInt(match[2]);    // The numeric index
-      
-      console.log('\nProcessing selector:', {
-        minimalSelector,
-        type,
-        index
-      });
-
-      // Find the element in the interactive view
-      const elements = this.snapshot.interactive[type === 'btn' ? 'buttons' : `${type}s`];
-      console.log(`Looking in ${type === 'btn' ? 'buttons' : `${type}s`}:`, elements);
-      
-      const element = elements?.[index];
-      console.log('Found element:', element);
-
-      if (element?.fullSelector) {
-        modifiedCode = modifiedCode.replace(match[0], `'${element.fullSelector}'`);
-        console.log(`Successfully replaced ${minimalSelector} with ${element.fullSelector}`);
-      } else {
-        console.warn(`Failed to find mapping for ${minimalSelector}`);
-        console.warn('Available elements:', elements?.length || 0);
-        if (elements) {
-          console.warn('Element indexes available:', elements.map((_, i) => i).join(', '));
-        }
-      }
-    }
-
-    console.log('\nFinal code:', modifiedCode);
-    return modifiedCode;
   }
 
   generateSkeletonView() {
