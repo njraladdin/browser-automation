@@ -26,6 +26,11 @@
 
   <div id="status" class="status"></div>
 
+  <div id="clicked-elements" class="clicked-elements">
+    <h3>Clicked Elements:</h3>
+    <div id="clicked-elements-list"></div>
+  </div>
+
   <script>
     let steps = [];
     let lastExecutedStep = -1;
@@ -246,6 +251,20 @@
         status.className = 'status';
       }, 3000);
     }
+
+    // Add WebSocket connection
+    const ws = new WebSocket('ws://localhost:3001');
+    
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.elementHTML) {
+        const list = document.getElementById('clicked-elements-list');
+        const element = document.createElement('div');
+        element.className = 'clicked-element';
+        element.textContent = data.elementHTML;
+        list.appendChild(element);
+      }
+    };
   </script>
 </body>
 </html> 

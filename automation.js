@@ -4,6 +4,7 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 const PageSnapshot = require('./PageSnapshot');
 const path = require('path');
 const fs = require('fs');
+const { broadcastClickedElement } = require('./server');
 
 // Create a single instance of PageSnapshot to reuse
 const pageSnapshot = new PageSnapshot();
@@ -27,6 +28,74 @@ let model = null;
       }
     });
     page = await browser.newPage();
+    
+    // Add this function to inject on every new page
+    const injectCode = async (page) => {
+      await page.evaluate(() => {
+        // Remove existing WebSocket if any
+        if (window.ws) {
+          window.ws.close();
+        }
+        
+        // Create new WebSocket connection
+        window.ws = new WebSocket('ws://localhost:3001');
+        
+        // Remove existing style if any
+        const existingStyle = document.getElementById('puppet-hover-style');
+        if (existingStyle) {
+          existingStyle.remove();
+        }
+        
+        // Add hover style
+        const style = document.createElement('style');
+        style.id = 'puppet-hover-style';
+        style.textContent = `
+          ._puppet-hover {
+            outline: 2px solid #ff0000 !important;
+          }
+        `;
+        document.head.appendChild(style);
+
+        // Add hover and wheel click handlers if they don't exist
+        if (!window._puppeteerHandlersAdded) {
+          document.addEventListener('mouseover', (event) => {
+            const element = event.target;
+            element.classList.add('_puppet-hover');
+          });
+
+          document.addEventListener('mouseout', (event) => {
+            const element = event.target;
+            element.classList.remove('_puppet-hover');
+          });
+
+          // Handle middle mouse button click (wheel click)
+          document.addEventListener('mouseup', (event) => {
+            // Check if it's middle mouse button (button 1)
+            if (event.button === 1) {
+              event.preventDefault();
+              const element = event.target;
+              if (window.ws && window.ws.readyState === WebSocket.OPEN) {
+                window.ws.send(JSON.stringify({ elementHTML: element.outerHTML }));
+              }
+            }
+          });
+
+          window._puppeteerHandlersAdded = true;
+        }
+      });
+    };
+
+    // Inject code on initial page
+    await injectCode(page);
+    
+    // Handle navigation events
+    page.on('domcontentloaded', async () => {
+      await injectCode(page);
+    });
+
+    // Navigate to Google
+    await page.goto('https://www.google.com');
+    
     console.log('Browser ready for use');
   } catch (error) {
     console.error('Failed to launch browser:', error);
