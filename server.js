@@ -24,11 +24,14 @@ wss.on('connection', (ws) => {
   ws.on('message', (message) => {
     try {
       const data = JSON.parse(message.toString());
-      if (data.elementHTML) {
+      if (data.elementHTML && data.selector) {
         // Broadcast to all frontend clients
         connections.forEach(client => {
           if (client.readyState === WebSocket.OPEN && client !== ws) {
-            client.send(JSON.stringify({ elementHTML: data.elementHTML }));
+            client.send(JSON.stringify({ 
+              elementHTML: data.elementHTML,
+              selector: data.selector 
+            }));
           }
         });
       }
@@ -44,7 +47,10 @@ wss.on('connection', (ws) => {
 function broadcastClickedElement(elementHTML) {
   connections.forEach(client => {
     if (client.readyState === WebSocket.OPEN) {
-      client.send(JSON.stringify({ elementHTML }));
+      client.send(JSON.stringify({ 
+        elementHTML: elementHTML,
+        selector: elementHTML  // You might want to generate a selector here if needed
+      }));
     }
   });
 }
@@ -69,8 +75,8 @@ app.get('/', (req, res) => {
 
 // Add new automation step
 app.post('/step', async (req, res) => {
-  const { instructions } = req.body;
-  const result = await addAutomationStep(instructions);
+  const { instructions, elements } = req.body;
+  const result = await addAutomationStep(instructions, elements);
   res.json(result);
 });
 

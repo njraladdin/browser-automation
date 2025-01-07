@@ -26,14 +26,10 @@
 
   <div id="status" class="status"></div>
 
-  <div id="clicked-elements" class="clicked-elements">
-    <h3>Clicked Elements:</h3>
-    <div id="clicked-elements-list"></div>
-  </div>
-
   <script>
     let steps = [];
     let lastExecutedStep = -1;
+    let currentStepElements = [];
 
     // Initialize with first empty step
     window.onload = () => {
@@ -60,27 +56,36 @@
         const response = await fetch('/step', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ instructions })
+          body: JSON.stringify({ 
+            instructions,
+            elements: currentStepElements 
+          })
         });
         
         const data = await response.json();
         if (data.success) {
-          steps.push({ instructions, code: data.code });
+          steps.push({ 
+            instructions, 
+            code: data.code,
+            elements: currentStepElements 
+          });
+          
+          // Clear elements before updating UI
+          currentStepElements = [];
+          
+          // Then update the UI
           updateStepsList();
           showStatus('Step added successfully!');
           stepBlock.classList.remove('loading');
-          // Enable play button when steps exist
           playButton.disabled = false;
         } else {
           showStatus(`Error: ${data.error}`);
-          // Re-enable the input and button if there's an error
           input.disabled = false;
           addButton.disabled = false;
           stepBlock.classList.remove('loading');
         }
       } catch (error) {
         showStatus(`Error: ${error.message}`);
-        // Re-enable the input and button if there's an error
         input.disabled = false;
         addButton.disabled = false;
         stepBlock.classList.remove('loading');
@@ -104,6 +109,17 @@
             <div class="step-number">${index + 1}</div>
             <input type="text" value="${step.instructions}" class="step-input" readonly />
           </div>
+          ${step.elements && step.elements.length > 0 ? `
+            <div class="step-elements">
+              <h4>Selected Elements:</h4>
+              ${step.elements.map(el => `
+                <div class="element-item">
+                  <div class="element-html">${el.html}</div>
+                  <div class="element-selector">${el.selector}</div>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
           <div class="code-block">
             ${step.code}
           </div>
@@ -116,6 +132,17 @@
           <div class="step-content">
             <div class="step-number">${newStepNumber}</div>
             <div class="step-input-container">
+              ${currentStepElements.length > 0 ? `
+                <div class="step-elements">
+                  <h4>Selected Elements:</h4>
+                  ${currentStepElements.map(el => `
+                    <div class="element-item">
+                      <div class="element-html">${el.html}</div>
+                      <div class="element-selector">${el.selector}</div>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : ''}
               <div class="step-label">
                 👉 ${newStepNumber === 1 ? "First step" : "Next step"}
               </div>
@@ -257,12 +284,15 @@
     
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      if (data.elementHTML) {
-        const list = document.getElementById('clicked-elements-list');
-        const element = document.createElement('div');
-        element.className = 'clicked-element';
-        element.textContent = data.elementHTML;
-        list.appendChild(element);
+      if (data.elementHTML && data.selector) {
+        // Add to current step elements
+        currentStepElements.push({
+          html: data.elementHTML,
+          selector: data.selector
+        });
+        
+        // Update the steps list to show new element
+        updateStepsList();
       }
     };
   </script>

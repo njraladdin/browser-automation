@@ -74,8 +74,27 @@ let model = null;
             if (event.button === 1) {
               event.preventDefault();
               const element = event.target;
+              // Generate unique selector for the element
+              const getSelector = (el) => {
+                if (el.id) {
+                  return `#${el.id}`;
+                }
+                if (el.className) {
+                  const classes = Array.from(el.classList).join('.');
+                  return classes ? `.${classes}` : null;
+                }
+                const index = Array.from(el.parentNode.children)
+                  .filter(child => child.tagName === el.tagName)
+                  .indexOf(el) + 1;
+                return `${el.tagName.toLowerCase()}:nth-child(${index})`;
+              };
+              
+              const selector = getSelector(element);
               if (window.ws && window.ws.readyState === WebSocket.OPEN) {
-                window.ws.send(JSON.stringify({ elementHTML: element.outerHTML }));
+                window.ws.send(JSON.stringify({ 
+                  elementHTML: element.outerHTML,
+                  selector: selector
+                }));
               }
             }
           });
@@ -176,7 +195,7 @@ async function savePromptForDebug(prompt, instructions) {
   );
 }
 
-async function addAutomationStep(instructions) {
+async function addAutomationStep(instructions, elements = []) {
   try {
     console.log('Generating code for new step...');
     
@@ -237,18 +256,19 @@ Current Page URL: ${snapshot.url}
 -you can use the given interactive elements map where you are provided each element on the page and it's selector so you can interact with them. you are only allowed to use the given selectors for the elements on the page. DO NOT USE ANY OTHER SELECTORS. use the interactive map as a guide.
 Available Interactive Elements:
 ${JSON.stringify(snapshot.interactive, null, 2)}
-
 ${previousSteps ? `Previous automation steps:
-${previousSteps}` : ''}
+  ${previousSteps}` : ''}
+Selected Elements for this step:
+${JSON.stringify(elements, null, 2)}
 
 User Instructions: ${instructions}`;
 
     await savePromptForDebug(systemPrompt, instructions);
-
+console.log({systemPrompt})
     const code = await generatePuppeteerCode(systemPrompt);
-    console.log(code);
+    console.log({code});
     
-    automationSteps.push({ instructions, code });
+    automationSteps.push({ instructions, code, elements });
     
     return { success: true, code };
   } catch (error) {

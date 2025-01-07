@@ -208,18 +208,42 @@ body {
   margin: 4px 0;
 } 
 
-.clicked-elements {
-  margin: 20px;
-  padding: 15px;
-  border: 1px solid #ddd;
-  border-radius: 5px;
-}
-
-.clicked-element {
+.step-elements {
   margin: 10px 0;
   padding: 10px;
   background: #f5f5f5;
-  border-radius: 3px;
+  border-radius: 4px;
+}
+
+.step-elements h4 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: #666;
+}
+
+.element-item {
   font-family: monospace;
+  font-size: 12px;
+  padding: 4px;
+  margin: 4px 0;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 3px;
   word-break: break-all;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.element-selector {
+  color: #0066cc;
+  font-weight: bold;
+  padding: 2px 4px;
+  background: #f0f8ff;
+  border-radius: 2px;
+}
+
+.element-html {
+  color: #666;
+  font-size: 11px;
 } 
