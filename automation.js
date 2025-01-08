@@ -4,7 +4,6 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 const PageSnapshot = require('./PageSnapshot');
 const path = require('path');
 const fs = require('fs');
-const { broadcastClickedElement } = require('./server');
 
 // Create a single instance of PageSnapshot to reuse
 const pageSnapshot = new PageSnapshot();
@@ -15,6 +14,7 @@ let automationSteps = [];
 let lastExecutedStepIndex = -1;
 let genAI = null;
 let model = null;
+const INITIAL_URL = 'https://airbnb.com/';
 
 // Initialize browser immediately
 (async () => {
@@ -28,93 +28,7 @@ let model = null;
       }
     });
     page = await browser.newPage();
-    
-    // Add this function to inject on every new page
-    const injectCode = async (page) => {
-      await page.evaluate(() => {
-        // Remove existing WebSocket if any
-        if (window.ws) {
-          window.ws.close();
-        }
-        
-        // Create new WebSocket connection
-        window.ws = new WebSocket('ws://localhost:3001');
-        
-        // Remove existing style if any
-        const existingStyle = document.getElementById('puppet-hover-style');
-        if (existingStyle) {
-          existingStyle.remove();
-        }
-        
-        // Add hover style
-        const style = document.createElement('style');
-        style.id = 'puppet-hover-style';
-        style.textContent = `
-          ._puppet-hover {
-            outline: 2px solid #ff0000 !important;
-          }
-        `;
-        document.head.appendChild(style);
-
-        // Add hover and wheel click handlers if they don't exist
-        if (!window._puppeteerHandlersAdded) {
-          document.addEventListener('mouseover', (event) => {
-            const element = event.target;
-            element.classList.add('_puppet-hover');
-          });
-
-          document.addEventListener('mouseout', (event) => {
-            const element = event.target;
-            element.classList.remove('_puppet-hover');
-          });
-
-          // Handle middle mouse button click (wheel click)
-          document.addEventListener('mouseup', (event) => {
-            // Check if it's middle mouse button (button 1)
-            if (event.button === 1) {
-              event.preventDefault();
-              const element = event.target;
-              // Generate unique selector for the element
-              const getSelector = (el) => {
-                if (el.id) {
-                  return `#${el.id}`;
-                }
-                if (el.className) {
-                  const classes = Array.from(el.classList).join('.');
-                  return classes ? `.${classes}` : null;
-                }
-                const index = Array.from(el.parentNode.children)
-                  .filter(child => child.tagName === el.tagName)
-                  .indexOf(el) + 1;
-                return `${el.tagName.toLowerCase()}:nth-child(${index})`;
-              };
-              
-              const selector = getSelector(element);
-              if (window.ws && window.ws.readyState === WebSocket.OPEN) {
-                window.ws.send(JSON.stringify({ 
-                  elementHTML: element.outerHTML,
-                  selector: selector
-                }));
-              }
-            }
-          });
-
-          window._puppeteerHandlersAdded = true;
-        }
-      });
-    };
-
-    // Inject code on initial page
-    await injectCode(page);
-    
-    // Handle navigation events
-    page.on('domcontentloaded', async () => {
-      await injectCode(page);
-    });
-
-    // Navigate to Google
-    await page.goto('https://www.google.com');
-    
+    await page.goto(INITIAL_URL);
     console.log('Browser ready for use');
   } catch (error) {
     console.error('Failed to launch browser:', error);
@@ -129,7 +43,7 @@ try {
   }
   genAI = new GoogleGenerativeAI(apiKey);
   model = genAI.getGenerativeModel({
-    model: "gemini-2.0-flash-exp",
+    model: "gemini-1.5-pro",
     generationConfig: {
       temperature: 0.7,
       topP: 0.95,
@@ -195,7 +109,7 @@ async function savePromptForDebug(prompt, instructions) {
   );
 }
 
-async function addAutomationStep(instructions, elements = []) {
+async function addAutomationStep(instructions) {
   try {
     console.log('Generating code for new step...');
     
@@ -226,6 +140,7 @@ Requirements:
 - For elements with shadowPath:
   1. Use page.evaluate() to focus the element
   2. For typing, use page.keyboard.type() after focusing
+  use promise for waiting instead of waitForTimeout
 - For regular elements: use normal page methods with minimal selectors
 
 Example using element with shadowPath:
@@ -254,12 +169,13 @@ try {
 
 Current Page URL: ${snapshot.url}
 -you can use the given interactive elements map where you are provided each element on the page and it's selector so you can interact with them. you are only allowed to use the given selectors for the elements on the page. DO NOT USE ANY OTHER SELECTORS. use the interactive map as a guide.
-Available Interactive Elements:
+
+interactive map:
 ${JSON.stringify(snapshot.interactive, null, 2)}
+
+previous automation steps:
 ${previousSteps ? `Previous automation steps:
   ${previousSteps}` : ''}
-Selected Elements for this step:
-${JSON.stringify(elements, null, 2)}
 
 User Instructions: ${instructions}`;
 
@@ -268,7 +184,7 @@ console.log({systemPrompt})
     const code = await generatePuppeteerCode(systemPrompt);
     console.log({code});
     
-    automationSteps.push({ instructions, code, elements });
+    automationSteps.push({ instructions, code });
     
     return { success: true, code };
   } catch (error) {

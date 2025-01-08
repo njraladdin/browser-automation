@@ -1,62 +1,14 @@
 const express = require('express');
 const path = require('path');
-const WebSocket = require('ws');
 const { 
   addAutomationStep, 
   executeCurrentSteps, 
   clearSteps,
   closeBrowser,
-  resetExecution 
+  resetExecution
 } = require('./automation');
 
 const app = express();
-// Create WebSocket server
-const wss = new WebSocket.Server({ port: 3001 });
-
-// Store active connections
-let connections = new Set();
-
-// WebSocket connection handler
-wss.on('connection', (ws) => {
-  connections.add(ws);
-  
-  // Add message handler
-  ws.on('message', (message) => {
-    try {
-      const data = JSON.parse(message.toString());
-      if (data.elementHTML && data.selector) {
-        // Broadcast to all frontend clients
-        connections.forEach(client => {
-          if (client.readyState === WebSocket.OPEN && client !== ws) {
-            client.send(JSON.stringify({ 
-              elementHTML: data.elementHTML,
-              selector: data.selector 
-            }));
-          }
-        });
-      }
-    } catch (error) {
-      console.error('Error handling WebSocket message:', error);
-    }
-  });
-  
-  ws.on('close', () => connections.delete(ws));
-});
-
-// Add this function to broadcast clicked elements
-function broadcastClickedElement(elementHTML) {
-  connections.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(JSON.stringify({ 
-        elementHTML: elementHTML,
-        selector: elementHTML  // You might want to generate a selector here if needed
-      }));
-    }
-  });
-}
-
-// Export for use in automation.js
-module.exports.broadcastClickedElement = broadcastClickedElement;
 
 app.use(express.json());
 app.use(express.static('public'));
@@ -75,8 +27,8 @@ app.get('/', (req, res) => {
 
 // Add new automation step
 app.post('/step', async (req, res) => {
-  const { instructions, elements } = req.body;
-  const result = await addAutomationStep(instructions, elements);
+  const { instructions } = req.body;
+  const result = await addAutomationStep(instructions);
   res.json(result);
 });
 
@@ -102,14 +54,6 @@ app.post('/close', async (req, res) => {
 app.post('/reset-execution', async (req, res) => {
   const result = await resetExecution();
   res.json(result);
-});
-
-// Add this new endpoint
-app.post('/element-clicked', (req, res) => {
-  const { elementHTML } = req.body;
-  // Broadcast to all connected WebSocket clients
-  console.log('Element clicked:', elementHTML);
-  res.json({ success: true });
 });
 
 app.get('/css/output.css', (req, res) => {

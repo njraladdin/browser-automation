@@ -258,63 +258,50 @@ class PageSnapshot {
 
   generateSelector($el) {
     const id = $el.attr('id');
-    if (id) return `#${id}`;
+    if (id && this.$(`#${id}`).length === 1) return `#${id}`;
 
-    const tag = $el[0].tagName.toLowerCase();
-    let selector = tag;
-    
-    // Handle custom elements and their children
-    if (tag.includes('-')) {
-      const name = $el.attr('name');
-      const type = $el.attr('type');
+    // Build the full path from the element up to a unique ancestor or root
+    const path = [];
+    let current = $el;
+    let foundUniqueAncestor = false;
+
+    while (current.length && !foundUniqueAncestor) {
+      let selector = current[0].tagName.toLowerCase();
       
-      if (name) selector += `[name="${name}"]`;
-      if (type) selector += `[type="${type}"]`;
-      
-      if ($el.hasClass('search-input')) {
-        selector += '.search-input';
+      // Add id if present
+      const currentId = current.attr('id');
+      if (currentId) {
+        selector = `#${currentId}`;
+        foundUniqueAncestor = true;
+      } else {
+        // Add classes that help identify the element
+        const classes = current.attr('class');
+        if (classes) {
+          const safeClasses = classes.split(/\s+/).filter(cls => 
+            /^[a-zA-Z0-9_-]+$/.test(cls) && !cls.match(/^(hover|focus|active)/));
+          if (safeClasses.length) {
+            selector += '.' + safeClasses.join('.');
+          }
+        }
+
+        // Add nth-child if there are siblings
+        const siblings = current.siblings(selector).add(current);
+        if (siblings.length > 1) {
+          const index = siblings.index(current) + 1;
+          selector += `:nth-child(${index})`;
+        }
       }
-      
-      return selector;
-    }
 
-    // For regular elements, combine both approaches
-    const type = $el.attr('type');
-    const name = $el.attr('name');
-    const role = $el.attr('role');
-    const href = $el.attr('href');
-    
-    // Add essential attributes
-    if (href) selector += `[href="${href}"]`;
-    if (type) selector += `[type="${type}"]`;
-    if (name) selector += `[name="${name}"]`;
-    if (role) selector += `[role="${role}"]`;
+      path.unshift(selector);
+      current = current.parent();
 
-    // Filter and add safe CSS classes
-    const classes = $el.attr('class');
-    if (classes) {
-      // Only keep truly safe classes
-      const safeClasses = classes.split(/\s+/).filter(cls => {
-        // Keep only simple classes without any special characters or Tailwind patterns
-        return /^[a-zA-Z0-9_-]+$/.test(cls) && 
-          !cls.startsWith('hover-') &&
-          !cls.startsWith('focus-') &&
-          !cls.startsWith('active-') &&
-          !cls.match(/^(w|h|p|m|px|py|mx|my|gap|space|text|bg|border|rounded|flex|grid|items|justify)/);
-      });
-
-      if (safeClasses.length) {
-        selector += '.' + safeClasses.join('.');
+      // Stop if we've reached a unique ancestor
+      if (current.length && this.$(path.join(' > ')).length === 1) {
+        foundUniqueAncestor = true;
       }
     }
 
-    // Instead of :contains, use aria-label or title if available
-    const ariaLabel = $el.attr('aria-label');
-    const title = $el.attr('title');
-    if (ariaLabel) selector += `[aria-label="${ariaLabel}"]`;
-    else if (title) selector += `[title="${title}"]`;
-
-    return selector;
+    return path.join(' > ');
   }
 
   findAssociatedLabel($el) {

@@ -29,7 +29,6 @@
   <script>
     let steps = [];
     let lastExecutedStep = -1;
-    let currentStepElements = [];
 
     // Initialize with first empty step
     window.onload = () => {
@@ -56,24 +55,16 @@
         const response = await fetch('/step', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            instructions,
-            elements: currentStepElements 
-          })
+          body: JSON.stringify({ instructions })
         });
         
         const data = await response.json();
         if (data.success) {
           steps.push({ 
             instructions, 
-            code: data.code,
-            elements: currentStepElements 
+            code: data.code
           });
           
-          // Clear elements before updating UI
-          currentStepElements = [];
-          
-          // Then update the UI
           updateStepsList();
           showStatus('Step added successfully!');
           stepBlock.classList.remove('loading');
@@ -109,17 +100,6 @@
             <div class="step-number">${index + 1}</div>
             <input type="text" value="${step.instructions}" class="step-input" readonly />
           </div>
-          ${step.elements && step.elements.length > 0 ? `
-            <div class="step-elements">
-              <h4>Selected Elements:</h4>
-              ${step.elements.map(el => `
-                <div class="element-item">
-                  <div class="element-html">${el.html}</div>
-                  <div class="element-selector">${el.selector}</div>
-                </div>
-              `).join('')}
-            </div>
-          ` : ''}
           <div class="code-block">
             ${step.code}
           </div>
@@ -132,17 +112,6 @@
           <div class="step-content">
             <div class="step-number">${newStepNumber}</div>
             <div class="step-input-container">
-              ${currentStepElements.length > 0 ? `
-                <div class="step-elements">
-                  <h4>Selected Elements:</h4>
-                  ${currentStepElements.map(el => `
-                    <div class="element-item">
-                      <div class="element-html">${el.html}</div>
-                      <div class="element-selector">${el.selector}</div>
-                    </div>
-                  `).join('')}
-                </div>
-              ` : ''}
               <div class="step-label">
                 👉 ${newStepNumber === 1 ? "First step" : "Next step"}
               </div>
@@ -278,23 +247,6 @@
         status.className = 'status';
       }, 3000);
     }
-
-    // Add WebSocket connection
-    const ws = new WebSocket('ws://localhost:3001');
-    
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.elementHTML && data.selector) {
-        // Add to current step elements
-        currentStepElements.push({
-          html: data.elementHTML,
-          selector: data.selector
-        });
-        
-        // Update the steps list to show new element
-        updateStepsList();
-      }
-    };
   </script>
 </body>
 </html> 

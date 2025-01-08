@@ -233,6 +233,10 @@ body {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  margin-bottom: 15px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  overflow: hidden;
 }
 
 .element-selector {
@@ -246,4 +250,61 @@ body {
 .element-html {
   color: #666;
   font-size: 11px;
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.element-preview {
+  padding: 10px;
+  background: #f8f9fa;
+}
+
+.element-code {
+  border-top: 1px solid #ddd;
+}
+
+.code-header {
+  padding: 8px 10px;
+  background: #f1f1f1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.code-label {
+  color: #666;
+  font-size: 0.9em;
+}
+
+.toggle-code {
+  background: none;
+  border: none;
+  color: #0366d6;
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 0.9em;
+}
+
+.toggle-code:hover {
+  text-decoration: underline;
+}
+
+.code-content {
+  margin: 0;
+  padding: 10px;
+  background: #fff;
+  overflow-x: auto;
+  transition: max-height 0.3s ease-out;
+}
+
+.code-content.collapsed {
+  max-height: 0;
+  padding: 0 10px;
+  overflow: hidden;
+}
+
+.code-content code {
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-family: monospace;
 } 

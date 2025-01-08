@@ -15,3 +15,24 @@ test by extrracintg listings from airbnb / extract list of followers on instagra
 
 save autoamtion flow 
 being able to rerun a step 
+
+
+-----
+
+fix selecting elements not working on airbnb (simplfy, keep array on backend, use polling in frontend)
+
+----
+
+
+
+try another appraoch: 
+
+
+currenty: extraction isn't working well by writing code to extract data 
+
+selection is not necessary anymore, remove it 
+
+only get interactive elements that are currently visible on the page 
+
+so for automation : provide interactive map of visible elements on the page / source of current sivile elements on the page 
+for data extraction : the AI writes a prompt on the data to extract, then it uses a function that calls another gemini request with full source of page (cleaned) 
