@@ -50,8 +50,14 @@ remove selection done
 compress selectors, and decompress it in result code done
 make the page source only contain  the contents and links (or as a new view, to be safe) done
 create a functino taht woudl recevie the page content and the prompt, and output the json (use gemini flash 8b) done 
-
 make the AI be able to detect that ishoudl use the function and use it in case of need for data extraction done 
+
+display extracted data in frontend (once extractedn, it autoamtically gets pushed to the frontend for that step)
+AI shoudl have acess to extracted data (number, first item and last item)
+keep screenshot preview of the page in frontend and send it after each step. be able to run headlessly
+save a steps flow in frontend  and rerun later 
+
+
 
 
 
@@ -60,4 +66,6 @@ make the AI be able to detect that ishoudl use the function and use it in case o
 
 benchmarks: 
 -go to airbnb,scroll to load all listings, extract all listings details 
+- go to airbnb, search a destination, then extract all data for each pagination page 
 -go to anonymiosu isntagram stories, and get latest stories 
+- go to twitter profile, and extract list of tweets until you get 100

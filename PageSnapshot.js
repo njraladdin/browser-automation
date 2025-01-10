@@ -20,20 +20,26 @@ class PageSnapshot {
 
   async captureSnapshot(page) {
     try {
-      // Wait for any ongoing navigation to complete
-      await Promise.race([
-        page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 10000 })
-          .catch(() => console.log('Navigation timeout reached, proceeding with snapshot')),
-        // If no navigation is happening, this will resolve immediately
-        new Promise(resolve => setTimeout(resolve, 100))
-      ]);
+      // First check if we're expecting a navigation
+      const navigationPromise = page.waitForNavigation({ 
+        waitUntil: 'networkidle2', 
+        timeout: 20000 
+      }).catch(() => {
+        console.log('No navigation occurred or timeout reached');
+      });
 
-      // Ensure page is fully loaded
-      await page.waitForFunction(() => {
-        return document.readyState === 'complete';
-      }, { timeout: 10000 })
-        .catch(e => console.log('Page load timeout reached:', e.message));
-console.log('page loaded');
+      // Wait for either navigation to complete or timeout
+      await navigationPromise;
+
+      // Then ensure DOM is ready (important for SPAs and dynamic content)
+      await page.waitForFunction(
+        () => document.readyState === 'complete',
+        { timeout: 10000 }
+      ).catch(e => {
+        console.log('DOM load timeout reached:', e.message);
+      });
+
+      console.log('Page fully loaded');
       // Capture current URL
       this.snapshot.url = await page.url();
       
