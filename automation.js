@@ -4,6 +4,8 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 const PageSnapshot = require('./PageSnapshot');
 const path = require('path');
 const fs = require('fs');
+const util = require('util');
+const fsPromises = require('fs').promises;
 
 // Create a single instance of PageSnapshot to reuse
 const pageSnapshot = new PageSnapshot();
@@ -175,7 +177,7 @@ User Instructions: ${instructions}`;
     
     const result = await model.generateContent(systemPrompt);
     const response = await result.response;
-    const code = response.text().trim()
+    let code = response.text().trim()
       .replace(/```javascript\n?/g, '')
       .replace(/```\n?/g, '');
     
@@ -188,7 +190,11 @@ User Instructions: ${instructions}`;
     
     console.log({code});
     
-    automationSteps.push({ instructions, code });
+    automationSteps.push({ 
+      instructions, 
+      code,
+      screenshot: null
+    });
     
     return { success: true, code };
   } catch (error) {
@@ -337,12 +343,28 @@ async function executeCurrentSteps() {
 
       await stepFunction(page, parseTextViewWithAI);
       await delay(1000);
+
+      // Take screenshot after step execution
+      try {
+        const screenshot = await page.screenshot({
+          encoding: 'base64',
+          type: 'jpeg',
+          quality: 80 // Adjust quality to balance size and quality
+        });
+        
+        // Add screenshot to the step data
+        automationSteps[i].screenshot = `data:image/jpeg;base64,${screenshot}`;
+      } catch (screenshotError) {
+        console.error('Failed to capture screenshot:', screenshotError);
+        automationSteps[i].screenshot = null;
+      }
     }
 
     const updatedSteps = automationSteps.map(step => ({
       instructions: step.instructions,
       code: step.code,
-      extractedData: step.extractedData
+      extractedData: step.extractedData,
+      screenshot: step.screenshot
     }));
 
     return { 

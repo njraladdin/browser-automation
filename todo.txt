@@ -54,11 +54,12 @@ make the AI be able to detect that ishoudl use the function and use it in case o
 
 
 
-display extracted data in frontend done 
-AI shoudl have acess to extracted data (number, first item and last item) done 
-
+display extracted data in frontend, done 
+AI shoudl have acess to extracted data (number, first item and last item), done 
 keep screenshot preview of the page in frontend and send it after each step. be able to run headlessly
 save a steps flow in frontend  and rerun later 
+when submitting a step, process it thourgh gmeini to amke sure it's a focused single stpe, otherwise show suggestions ot split it with a popup to accept 
+
 
 run each benchmark, troubleshoot and improve 
 

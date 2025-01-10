@@ -95,14 +95,23 @@
       const stepsHtml = steps.map((step, index) => `
         <div class="step-block ${index <= lastExecutedStep ? 'executed' : ''}" id="step-${index + 1}">
           <div class="step-content">
-            <div class="step-number">${index + 1}</div>
-            <input type="text" value="${step.instructions}" class="step-input" readonly />
-          </div>
-          ${step.code ? `
-            <div class="code-block">
-              <pre>${step.code}</pre>
+            <div class="step-main-content">
+              <div class="step-number">${index + 1}</div>
+              <div style="flex: 1;">
+                <input type="text" value="${step.instructions}" class="step-input" readonly />
+                ${step.code ? `
+                  <div class="code-block">
+                    <pre>${step.code}</pre>
+                  </div>
+                ` : ''}
+              </div>
             </div>
-          ` : ''}
+            <div class="step-thumbnail">
+              ${step.screenshot ? `
+                <img src="${step.screenshot}" alt="Step ${index + 1} result" />
+              ` : 'Screenshot pending...'}
+            </div>
+          </div>
           ${step.extractedData ? `
             <div class="data-block">
               <div class="data-block-header" onclick="toggleDataBlock(this)">
@@ -121,20 +130,22 @@
       const newStepHtml = `
         <div class="step-block" id="step-${newStepNumber}">
           <div class="step-content">
-            <div class="step-number">${newStepNumber}</div>
-            <div class="step-input-container">
-              <div class="step-label">
-                👉 ${newStepNumber === 1 ? "First step" : "Next step"}
+            <div class="step-main-content">
+              <div class="step-number">${newStepNumber}</div>
+              <div class="step-input-container">
+                <div class="step-label">
+                  👉 ${newStepNumber === 1 ? "First step" : "Next step"}
+                </div>
+                <input type="text" 
+                  id="step-input-${newStepNumber}" 
+                  placeholder="Go to website, click button, type text..."
+                  class="step-input"
+                  onkeypress="if(event.key === 'Enter') addStep(${newStepNumber})" />
               </div>
-              <input type="text" 
-                id="step-input-${newStepNumber}" 
-                placeholder="Go to website, click button, type text..."
-                class="step-input"
-                onkeypress="if(event.key === 'Enter') addStep(${newStepNumber})" />
+              <button onclick="addStep(${newStepNumber})" class="btn btn-primary">
+                Add
+              </button>
             </div>
-            <button onclick="addStep(${newStepNumber})" class="btn btn-primary">
-              Add
-            </button>
           </div>
           ${newStepNumber === 1 ? `
             <div class="help-text">

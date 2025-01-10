@@ -364,3 +364,44 @@ body {
 .data-block.collapsed .toggle-icon::after {
   content: '▶';
 } 
+
+/* Add these new styles */
+.step-main-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 24px;
+}
+
+.step-thumbnail {
+  width: 200px;
+  height: 140px;
+  flex-shrink: 0;
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #666;
+  font-size: 12px;
+}
+
+/* Update media query for mobile responsiveness */
+@media (max-width: 768px) {
+  .step-main-content {
+    flex-direction: column;
+  }
+  
+  .step-thumbnail {
+    width: 100%;
+    margin-top: 12px;
+  }
+} 
+
+.step-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 4px;
+} 
