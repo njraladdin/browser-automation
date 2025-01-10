@@ -54,7 +54,8 @@ make the AI be able to detect that ishoudl use the function and use it in case o
 
 
 
-display extracted data in frontend (once extractedn, it autoamtically gets pushed to the frontend for that step)
+display extracted data in frontend done 
+
 AI shoudl have acess to extracted data (number, first item and last item)
 keep screenshot preview of the page in frontend and send it after each step. be able to run headlessly
 save a steps flow in frontend  and rerun later 

@@ -12,77 +12,16 @@ let browser = null;
 let page = null;
 let automationSteps = [];
 let lastExecutedStepIndex = -1;
-let genAI = null;
-let model = null;
+
+
 const INITIAL_URL = 'https://airbnb.com/';
+
+
 async function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 // Initialize browser immediately
-(async () => {
-  try {
-    console.log('Launching browser...');
-    browser = await puppeteer.launch({ 
-      headless: false,
-      defaultViewport: {
-        width: 1280,
-        height: 800
-      }
-    });
-    page = await browser.newPage();
-    await page.goto(INITIAL_URL);
-    console.log('Browser ready for use');
-  } catch (error) {
-    console.error('Failed to launch browser:', error);
-  }
-})();
-
-// Initialize Gemini API (add this right after browser initialization)
-try {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error('GEMINI_API_KEY not found in environment variables');
-  }
-  genAI = new GoogleGenerativeAI(apiKey);
-  model = genAI.getGenerativeModel({
-    model: "gemini-2.0-flash-exp",
-    generationConfig: {
-      temperature: 0.7,
-      topP: 0.95,
-      topK: 40,
-      maxOutputTokens: 8192,
-    }
-  });
-  console.log('Gemini API initialized successfully');
-} catch (error) {
-  console.error('Failed to initialize Gemini API:', error);
-}
-
-async function generatePuppeteerCode(systemPrompt) {
-  try {
-    if (!model) {
-      throw new Error('Gemini API not initialized');
-    }
-
-    const result = await model.generateContent(systemPrompt);
-    const response = await result.response;
-    const text = response.text();
-    
-    if (!text) {
-      throw new Error('Empty response from Gemini API');
-    }
-
-    return text.trim()
-      .replace(/```javascript\n?/g, '')
-      .replace(/```\n?/g, '');
-
-  } catch (error) {
-    console.error('Gemini API error:', error);
-    throw new Error(`Failed to generate code: ${error.message}`);
-  }
-}
-
 async function initBrowser() {
   if (!browser) {
     console.log('Launching browser...');
@@ -94,9 +33,15 @@ async function initBrowser() {
       }
     });
     page = await browser.newPage();
+    await page.goto(INITIAL_URL);
   }
   return { browser, page };
 }
+
+// Add immediate browser initialization
+initBrowser().catch(error => {
+  console.error('Failed to launch browser:', error);
+});
 
 async function savePromptForDebug(prompt, instructions) {
   const testDir = path.join(__dirname, 'test');
@@ -198,8 +143,27 @@ ${previousSteps}` : ''}
 User Instructions: ${instructions}`;
 
     await savePromptForDebug(systemPrompt, instructions);
-
-    let code = await generatePuppeteerCode(systemPrompt);
+    
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error('GEMINI_API_KEY not found in environment variables');
+    }
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.0-flash-exp",
+      generationConfig: {
+        temperature: 0.7,
+        topP: 0.95,
+        topK: 40,
+        maxOutputTokens: 8192,
+      }
+    });
+    
+    const result = await model.generateContent(systemPrompt);
+    const response = await result.response;
+    const code = response.text().trim()
+      .replace(/```javascript\n?/g, '')
+      .replace(/```\n?/g, '');
     
     console.log('Code before selector replacement:', code);
     
