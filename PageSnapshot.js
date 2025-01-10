@@ -19,90 +19,109 @@ class PageSnapshot {
   }
 
   async captureSnapshot(page) {
-    // Capture current URL
-    this.snapshot.url = await page.url();
-    
-    // Capture both regular HTML and shadow DOM content
-    const { html, shadowDOMData, iframeData } = await page.evaluate(() => {
-      function captureShadowDOM(root) {
-        const shadowTrees = [];
-        
-        const hosts = root.querySelectorAll('*');
-        hosts.forEach(host => {
-          if (host.shadowRoot) {
-            // Capture the shadow root's content and structure
-            shadowTrees.push({
-              hostElement: {
-                tagName: host.tagName.toLowerCase(),
-                id: host.id,
-                classList: Array.from(host.classList)
-              },
-              content: host.shadowRoot.innerHTML,
-              // Recursively capture nested shadow DOMs
-              shadowTrees: captureShadowDOM(host.shadowRoot)
-            });
-          }
-        });
-        
-        return shadowTrees;
-      }
+    try {
+      // Wait for any ongoing navigation to complete
+      await Promise.race([
+        page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 10000 })
+          .catch(() => console.log('Navigation timeout reached, proceeding with snapshot')),
+        // If no navigation is happening, this will resolve immediately
+        new Promise(resolve => setTimeout(resolve, 100))
+      ]);
+
+      // Ensure page is fully loaded
+      await page.waitForFunction(() => {
+        return document.readyState === 'complete';
+      }, { timeout: 10000 })
+        .catch(e => console.log('Page load timeout reached:', e.message));
+console.log('page loaded');
+      // Capture current URL
+      this.snapshot.url = await page.url();
       
-      // Add iframe content capture
-      function captureIframes() {
-        const iframes = [];
-        document.querySelectorAll('iframe').forEach(iframe => {
-          try {
-            if (iframe.contentDocument) {
-              iframes.push({
-                src: iframe.src,
-                content: iframe.contentDocument.body.innerHTML
+      // Capture both regular HTML and shadow DOM content
+      const { html, shadowDOMData, iframeData } = await page.evaluate(() => {
+        function captureShadowDOM(root) {
+          const shadowTrees = [];
+          
+          const hosts = root.querySelectorAll('*');
+          hosts.forEach(host => {
+            if (host.shadowRoot) {
+              // Capture the shadow root's content and structure
+              shadowTrees.push({
+                hostElement: {
+                  tagName: host.tagName.toLowerCase(),
+                  id: host.id,
+                  classList: Array.from(host.classList)
+                },
+                content: host.shadowRoot.innerHTML,
+                // Recursively capture nested shadow DOMs
+                shadowTrees: captureShadowDOM(host.shadowRoot)
               });
             }
-          } catch (e) {
-            // Skip iframes we can't access due to same-origin policy
-            console.log('Could not access iframe content:', e);
-          }
-        });
-        return iframes;
-      }
+          });
+          
+          return shadowTrees;
+        }
+        
+        // Add iframe content capture
+        function captureIframes() {
+          const iframes = [];
+          document.querySelectorAll('iframe').forEach(iframe => {
+            try {
+              if (iframe.contentDocument) {
+                iframes.push({
+                  src: iframe.src,
+                  content: iframe.contentDocument.body.innerHTML
+                });
+              }
+            } catch (e) {
+              // Skip iframes we can't access due to same-origin policy
+              console.log('Could not access iframe content:', e);
+            }
+          });
+          return iframes;
+        }
+        
+        return {
+          html: document.documentElement.outerHTML,
+          shadowDOMData: captureShadowDOM(document),
+          iframeData: captureIframes()
+        };
+      });
+
+      // Store the complete shadow DOM data
+      this.snapshot.shadowDOM = shadowDOMData;
+
+      // Store the iframe data
+      this.snapshot.iframeData = iframeData;
+
+      // Load the HTML into cheerio
+      this.$ = cheerio.load(html, {
+        decodeEntities: true,
+        xmlMode: false
+      });
+
+      // Clean the page
+      this.cleanPage();
+      this.snapshot.html = this.getCleanedHtml();
+
+      // Generate analysis data
+      const { view: interactiveView } = await this.generateInteractiveView(page);
+      this.snapshot.interactive = interactiveView;
       
-      return {
-        html: document.documentElement.outerHTML,
-        shadowDOMData: captureShadowDOM(document),
-        iframeData: captureIframes()
-      };
-    });
+      // Set timestamp
+      this.snapshot.timestamp = new Date().toISOString();
 
-    // Store the complete shadow DOM data
-    this.snapshot.shadowDOM = shadowDOMData;
+      // Generate raw text view
+      this.snapshot.textView = this.generateTextView();
 
-    // Store the iframe data
-    this.snapshot.iframeData = iframeData;
+      // Save debug files
+      await this.saveDebugFiles();
 
-    // Load the HTML into cheerio
-    this.$ = cheerio.load(html, {
-      decodeEntities: true,
-      xmlMode: false
-    });
-
-    // Clean the page
-    this.cleanPage();
-    this.snapshot.html = this.getCleanedHtml();
-
-    // Generate analysis data
-    const { view: interactiveView } = await this.generateInteractiveView(page);
-    this.snapshot.interactive = interactiveView;
-    
-    // Set timestamp
-    this.snapshot.timestamp = new Date().toISOString();
-
-    // Generate raw text view
-    this.snapshot.textView = this.generateTextView();
-
-    // Save debug files
-    await this.saveDebugFiles();
-
-    return this.snapshot;
+      return this.snapshot;
+    } catch (error) {
+      console.error('Failed to capture snapshot:', error);
+      throw error;
+    }
   }
 
   // Get methods for accessing snapshot data
