@@ -43,7 +43,7 @@ try {
   }
   genAI = new GoogleGenerativeAI(apiKey);
   model = genAI.getGenerativeModel({
-    model: "gemini-1.5-pro",
+    model: "gemini-2.0-flash-exp",
     generationConfig: {
       temperature: 0.7,
       topP: 0.95,
@@ -169,15 +169,28 @@ try {
   throw error;
 }
 
+For data extraction tasks:
+You can use: await snapshot.parseTextViewWithAI(structurePrompt)
+where structurePrompt is a string explaining what data to extract from the page.
+Example:
+try {
+  console.log('Extracting product data...');
+  const data = await snapshot.parseTextViewWithAI('Extract all product listings with their prices, names, and descriptions');
+  console.log('Extracted data:', data);
+} catch (error) {
+  console.error('Failed to extract data:', error);
+  throw error;
+}
+IMPORTANT: if you need to do any sorts of extraction of data, you need to use the given function like the example above. you jsut give which data you want in the prop and the function would take care of the rest. do not try to use querySelectorAll or anything like that.
 Current Page URL: ${snapshot.url}
 -you can use the given interactive elements map where you are provided each element on the page and it's selector so you can interact with them. Use the selectors exactly as they appear in the 'selector' field (in format __SELECTOR__N). DO NOT MODIFY THE SELECTORS. use the interactive map as a guide.
 
-interactive map:
+Interactive map:
 ${JSON.stringify(snapshot.interactive, null, 2)}
 
-previous automation steps:
+Previous automation steps:
 ${previousSteps ? `Previous automation steps:
-  ${previousSteps}` : ''}
+${previousSteps}` : ''}
 
 User Instructions: ${instructions}`;
 
@@ -220,12 +233,12 @@ async function executeCurrentSteps() {
       const step = automationSteps[i];
       console.log(`Executing step ${i + 1}: ${step.instructions}`);
       
-      // Execute the step
-      const stepFunction = new Function('page', `return (async (page) => {
+      // Execute the step with pageSnapshot instance available
+      const stepFunction = new Function('page', 'snapshot', `return (async (page, snapshot) => {
         ${step.code}
-      })(page)`);
+      })(page, snapshot)`);
 
-      await stepFunction(page);
+      await stepFunction(page, pageSnapshot);
       await delay(1000); // Small delay for stability
       
       lastExecutedStepIndex = i;

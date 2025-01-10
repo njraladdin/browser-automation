@@ -51,7 +51,9 @@ compress selectors, and decompress it in result code done
 make the page source only contain  the contents and links (or as a new view, to be safe) done
 create a functino taht woudl recevie the page content and the prompt, and output the json (use gemini flash 8b) done 
 
-make the AI be able to detect that ishoudl use the function and use it in case of need for data extraction 
+make the AI be able to detect that ishoudl use the function and use it in case of need for data extraction done 
+
+
 
 
 
