@@ -72,11 +72,25 @@ async function addAutomationStep(instructions) {
 
     const snapshot = await pageSnapshot.captureSnapshot(page);
 
-    const previousSteps = automationSteps.map((step, index) => `
+    const previousSteps = automationSteps.map((step, index) => {
+      let extractedDataSummary = '';
+      if (step.extractedData) {
+        const data = step.extractedData;
+        if (data?.items) {
+          const items = data.items;
+          extractedDataSummary = `
+Extracted Data Summary:
+- Total items: ${items.length}
+- First item: ${JSON.stringify(items[0])}
+- Last item: ${JSON.stringify(items[items.length - 1])}`;
+        }
+      }
+
+      return `
 Step ${index + 1}: ${step.instructions}
 Code:
-${step.code}
-`).join('\n');
+${step.code}${extractedDataSummary}`;
+    }).join('\n');
 
     const systemPrompt = `You are a Puppeteer code generator. Generate ONLY the executable code without any function declarations or wrappers.
 
