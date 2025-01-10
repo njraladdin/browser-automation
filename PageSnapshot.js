@@ -20,16 +20,7 @@ class PageSnapshot {
 
   async captureSnapshot(page) {
     try {
-      // First check if we're expecting a navigation
-      const navigationPromise = page.waitForNavigation({ 
-        waitUntil: 'networkidle2', 
-        timeout: 20000 
-      }).catch(() => {
-        console.log('No navigation occurred or timeout reached');
-      });
 
-      // Wait for either navigation to complete or timeout
-      await navigationPromise;
 
       // Then ensure DOM is ready (important for SPAs and dynamic content)
       await page.waitForFunction(
@@ -529,115 +520,6 @@ class PageSnapshot {
       // Clean up excess whitespace
       .replace(/\s+/g, ' ')
       .trim();
-  }
-
-  async parseTextViewWithAI(structurePrompt) {
-    try {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        throw new Error('GEMINI_API_KEY not found in environment variables');
-      }
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash-8b",
-        generationConfig: {
-          temperature: 0.7,
-          topP: 0.95,
-          topK: 40,
-          maxOutputTokens: 8192,
-          responseMimeType: "application/json"
-        }
-      });
-
-      const textContent = this.generateTextView();
-
-      const systemPrompt = `You are an AI assistant that parses webpage text content and extracts structured information.
-
-Input Text Content from Webpage:
-${textContent}
-
-Instructions for Parsing:
-${structurePrompt}
-
-Please provide your response in the following JSON format:
-{
-  "items": [
-    // Each item should be an object with properly separated key-value pairs
-    // Example structures for different types of content:
-    
-    // Product listing example:
-    {
-      "name": "string",
-      "price": "string",
-      "brand": "string",
-      "category": "string",
-      "rating": "string",
-      "reviews_count": "string",
-      "specifications": ["string"],
-      "in_stock": true,
-      "is_on_sale": false,
-      "has_warranty": true,
-      "free_shipping": true
-    },
-    
-    // Article/News example:
-    {
-      "title": "string",
-      "author": "string",
-      "date": "string",
-      "category": "string",
-      "summary": "string",
-      "tags": ["string"],
-      "read_time": "string",
-      "is_premium": false,
-      "is_featured": true,
-      "comments_enabled": true,
-      "breaking_news": false
-    }
-  ]
-}
-
-Important:
-- Ensure the response is valid JSON
-- Split all information into appropriate key-value pairs
-- Use clear, descriptive keys for each piece of information
-- Don't combine different types of information into single fields
-- Keep data well-structured and organized
-- We need to extract as much relevant data as possible`;
-
-      // Generate response from Gemini
-      const result = await model.generateContent({
-        contents: [{ role: "user", parts: [{ text: systemPrompt }]}]
-      });
-
-      const response = await result.response;
-      const parsedText = response.text();
-
-      // Save the response to test folder
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const testDir = path.join(__dirname, 'test');
-      if (!fs.existsSync(testDir)) {
-        fs.mkdirSync(testDir);
-      }
-
-      fs.writeFileSync(
-        path.join(testDir, `ai_parsed_${timestamp}.txt`),
-        `Structure Prompt:\n${structurePrompt}\n\nParsed Result:\n${parsedText}`,
-        'utf8'
-      );
-
-      // Try to parse the response as JSON
-      try {
-        return JSON.parse(parsedText);
-      } catch (e) {
-        console.warn('Warning: AI response was not valid JSON, returning raw text');
-        return parsedText;
-      }
-
-    } catch (error) {
-      console.error('Failed to parse text with AI:', error);
-      throw error;
-    }
   }
 }
 

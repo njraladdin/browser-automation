@@ -87,10 +87,8 @@
       const stepsList = document.getElementById('stepsList');
       const playButton = document.getElementById('playButton');
       
-      // Disable play button if there are no steps
       playButton.disabled = steps.length === 0;
       
-      // Update button text based on execution state
       const buttonText = lastExecutedStep >= 0 ? '▶ Continue Automation' : '▶ Play Automation';
       playButton.querySelector('.btn-text').textContent = buttonText;
       
@@ -100,9 +98,22 @@
             <div class="step-number">${index + 1}</div>
             <input type="text" value="${step.instructions}" class="step-input" readonly />
           </div>
-          <div class="code-block">
-            ${step.code}
-          </div>
+          ${step.code ? `
+            <div class="code-block">
+              <pre>${step.code}</pre>
+            </div>
+          ` : ''}
+          ${step.extractedData ? `
+            <div class="data-block">
+              <div class="data-block-header" onclick="toggleDataBlock(this)">
+                <span>📊 Extracted Data</span>
+                <span class="toggle-icon"></span>
+              </div>
+              <pre>${typeof step.extractedData === 'string' 
+                ? step.extractedData 
+                : JSON.stringify(step.extractedData, null, 2)}</pre>
+            </div>
+          ` : ''}
         </div>
       `).join('');
 
@@ -160,12 +171,12 @@
         
         const data = await response.json();
         if (data.success) {
+          console.log('Received steps from server:', data.steps);
           lastExecutedStep = data.lastExecutedStep;
           steps = data.steps;
           updateStepsList();
           showStatus('Steps executed successfully!');
           
-          // Disable play button if all steps are executed
           playButton.disabled = lastExecutedStep >= steps.length - 1;
         } else {
           showStatus(`Error: ${data.error}`, 'error');
@@ -246,6 +257,11 @@
       setTimeout(() => {
         status.className = 'status';
       }, 3000);
+    }
+
+    function toggleDataBlock(header) {
+      const dataBlock = header.parentElement;
+      dataBlock.classList.toggle('collapsed');
     }
   </script>
 </body>

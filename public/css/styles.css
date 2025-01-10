@@ -307,4 +307,60 @@ body {
   white-space: pre-wrap;
   word-break: break-all;
   font-family: monospace;
+}
+
+.code-block, .data-block {
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  margin-top: 10px;
+  overflow: hidden;
+}
+
+.code-block pre {
+  margin: 0;
+  padding: 15px;
+  white-space: pre-wrap;
+  font-family: monospace;
+}
+
+.data-block {
+  border-color: #28a745;
+}
+
+.data-block-header {
+  background: #28a745;
+  color: white;
+  padding: 8px 15px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  user-select: none;
+}
+
+.data-block-header:hover {
+  background: #218838;
+}
+
+.data-block pre {
+  margin: 0;
+  padding: 15px;
+  white-space: pre-wrap;
+  font-family: monospace;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.data-block.collapsed pre {
+  display: none;
+}
+
+.data-block-header .toggle-icon::after {
+  content: '▼';
+  font-size: 12px;
+}
+
+.data-block.collapsed .toggle-icon::after {
+  content: '▶';
 } 

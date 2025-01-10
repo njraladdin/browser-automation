@@ -15,6 +15,9 @@ let lastExecutedStepIndex = -1;
 let genAI = null;
 let model = null;
 const INITIAL_URL = 'https://airbnb.com/';
+async function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 // Initialize browser immediately
 (async () => {
@@ -170,12 +173,12 @@ try {
 }
 
 For data extraction tasks:
-You can use: await snapshot.parseTextViewWithAI(structurePrompt)
+You can use: await parseTextViewWithAI(structurePrompt)
 where structurePrompt is a string explaining what data to extract from the page.
 Example:
 try {
   console.log('Extracting product data...');
-  const data = await snapshot.parseTextViewWithAI('Extract all product listings with their prices, names, and descriptions');
+  const data = await parseTextViewWithAI('Extract all product listings with their prices, names, and descriptions');
   console.log('Extracted data:', data);
 } catch (error) {
   console.error('Failed to extract data:', error);
@@ -215,10 +218,121 @@ User Instructions: ${instructions}`;
     return { success: false, error: error.message };
   }
 }
+async function parseTextViewWithAI(structurePrompt) {
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error('GEMINI_API_KEY not found in environment variables');
+    }
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({
+      model: "gemini-1.5-flash-8b",
+      generationConfig: {
+        temperature: 0.7,
+        topP: 0.95,
+        topK: 40,
+        maxOutputTokens: 8192,
+        responseMimeType: "application/json"
+      }
+    });
 
-async function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+    const textContent = pageSnapshot.generateTextView();
+
+    const systemPrompt = `You are an AI assistant that parses webpage text content and extracts structured information.
+
+    Input Text Content from Webpage:
+    ${textContent}
+
+    Instructions for Parsing:
+    ${structurePrompt}
+
+    Please provide your response in the following JSON format:
+    {
+      "items": [
+        // Each item should be an object with properly separated key-value pairs
+        // Example structures for different types of content:
+        
+        // Product listing example:
+        {
+          "name": "string",
+          "price": "string",
+          "brand": "string",
+          "category": "string",
+          "rating": "string",
+          "reviews_count": "string",
+          "specifications": ["string"],
+          "in_stock": true,
+          "is_on_sale": false,
+          "has_warranty": true,
+          "free_shipping": true
+        },
+        
+        // Article/News example:
+        {
+          "title": "string",
+          "author": "string",
+          "date": "string",
+          "category": "string",
+          "summary": "string",
+          "tags": ["string"],
+          "read_time": "string",
+          "is_premium": false,
+          "is_featured": true,
+          "comments_enabled": true,
+          "breaking_news": false
+        }
+      ]
+    }
+
+    Important:
+    - Ensure the response is valid JSON
+    - Split all information into appropriate key-value pairs
+    - Use clear, descriptive keys for each piece of information
+    - Don't combine different types of information into single fields
+    - Keep data well-structured and organized
+    - We need to extract as much relevant data as possible`;
+
+    const result = await model.generateContent({
+      contents: [{ role: "user", parts: [{ text: systemPrompt }]}]
+    });
+
+    const response = await result.response;
+    const parsedText = response.text();
+
+    // Save debug file
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const testDir = path.join(__dirname, 'test');
+    if (!fs.existsSync(testDir)) {
+      fs.mkdirSync(testDir);
+    }
+
+    fs.writeFileSync(
+      path.join(testDir, `ai_parsed_${timestamp}.txt`),
+      `Structure Prompt:\n${structurePrompt}\n\nParsed Result:\n${parsedText}`,
+      'utf8'
+    );
+
+    // Parse the response and update the current step
+    try {
+      const extractedData = JSON.parse(parsedText);
+      if (lastExecutedStepIndex < automationSteps.length) {
+        automationSteps[lastExecutedStepIndex].extractedData = extractedData;
+      }
+      return extractedData;
+    } catch (e) {
+      console.warn('Warning: AI response was not valid JSON, returning raw text');
+      if (lastExecutedStepIndex < automationSteps.length) {
+        automationSteps[lastExecutedStepIndex].extractedData = parsedText;
+      }
+      return parsedText;
+    }
+
+  } catch (error) {
+    console.error('Failed to parse text with AI:', error);
+    throw error;
+  }
 }
+
 
 async function executeCurrentSteps() {
   try {
@@ -233,21 +347,30 @@ async function executeCurrentSteps() {
       const step = automationSteps[i];
       console.log(`Executing step ${i + 1}: ${step.instructions}`);
       
-      // Execute the step with pageSnapshot instance available
-      const stepFunction = new Function('page', 'snapshot', `return (async (page, snapshot) => {
-        ${step.code}
-      })(page, snapshot)`);
-
-      await stepFunction(page, pageSnapshot);
-      await delay(1000); // Small delay for stability
-      
       lastExecutedStepIndex = i;
+      
+      const stepFunction = new Function(
+        'page', 
+        'parseTextViewWithAI',
+        `return (async (page, parseTextViewWithAI) => {
+          ${step.code}
+        })(page, parseTextViewWithAI)`
+      );
+
+      await stepFunction(page, parseTextViewWithAI);
+      await delay(1000);
     }
+
+    const updatedSteps = automationSteps.map(step => ({
+      instructions: step.instructions,
+      code: step.code,
+      extractedData: step.extractedData
+    }));
 
     return { 
       success: true, 
       lastExecutedStep: lastExecutedStepIndex,
-      steps: automationSteps 
+      steps: updatedSteps
     };
   } catch (error) {
     console.error('Automation failed:', error);
@@ -274,6 +397,8 @@ async function closeBrowser() {
   }
   return { success: true };
 }
+
+
 
 module.exports = {
   addAutomationStep,
