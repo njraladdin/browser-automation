@@ -137,17 +137,19 @@ Requirements:
 - Always wrap code in try/catch
 - Add clear console.log statements
 - Return ONLY executable code
+- Use the selectors provided in the interactive map exactly as they appear (in format __SELECTOR__N), and if ther's an ID then you can use it as well
 - For elements with shadowPath:
   1. Use page.evaluate() to focus the element
   2. For typing, use page.keyboard.type() after focusing
   use promise for waiting instead of waitForTimeout
 - For regular elements: use normal page methods with minimal selectors
+- keep in mind that the code would probably be ran again, but not with the exact elements content or elements number (like listings etc.), so use selectors smartly 
 
 Example using element with shadowPath:
 try {
   console.log('Typing in input field');
   await page.evaluate(() => {
-    const input = document.querySelector('reddit-search-large')
+    const input = document.querySelector('__SELECTOR__1')
       ?.shadowRoot?.querySelector('faceplate-search-input')
       ?.shadowRoot?.querySelector('input');
     input.focus();
@@ -161,14 +163,14 @@ try {
 Example using regular element:
 try {
   console.log('Clicking button');
-  await page.click('button[type="submit"]');
+  await page.click('__SELECTOR__2');
 } catch (error) {
   console.error('Failed to click button:', error);
   throw error;
 }
 
 Current Page URL: ${snapshot.url}
--you can use the given interactive elements map where you are provided each element on the page and it's selector so you can interact with them. you are only allowed to use the given selectors for the elements on the page. DO NOT USE ANY OTHER SELECTORS. use the interactive map as a guide.
+-you can use the given interactive elements map where you are provided each element on the page and it's selector so you can interact with them. Use the selectors exactly as they appear in the 'selector' field (in format __SELECTOR__N). DO NOT MODIFY THE SELECTORS. use the interactive map as a guide.
 
 interactive map:
 ${JSON.stringify(snapshot.interactive, null, 2)}
@@ -180,8 +182,16 @@ ${previousSteps ? `Previous automation steps:
 User Instructions: ${instructions}`;
 
     await savePromptForDebug(systemPrompt, instructions);
-console.log({systemPrompt})
-    const code = await generatePuppeteerCode(systemPrompt);
+
+    let code = await generatePuppeteerCode(systemPrompt);
+    
+    console.log('Code before selector replacement:', code);
+    
+    // Replace short selectors with original selectors
+    code = pageSnapshot.replaceSelectorsWithOriginals(code);
+    
+    console.log('Code after selector replacement:', code);
+    
     console.log({code});
     
     automationSteps.push({ instructions, code });

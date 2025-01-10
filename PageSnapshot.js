@@ -1,19 +1,20 @@
 const cheerio = require('cheerio');
 const fs = require('fs');
 const path = require('path');
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+require('dotenv').config();
 
 class PageSnapshot {
   constructor() {
     this.$ = null;
-    this.selectorMap = new Map();
+    this.selectorCounter = 0;
+    this.selectorToOriginalMap = new Map();
     this.snapshot = {
       url: null,
       html: null,
-      skeletonView: null,
       interactive: null,
-      fullInteractive: null,
-      selectorMap: null,
-      timestamp: null
+      timestamp: null,
+      textView: null
     };
   }
 
@@ -22,7 +23,7 @@ class PageSnapshot {
     this.snapshot.url = await page.url();
     
     // Capture both regular HTML and shadow DOM content
-    const { html, shadowDOMData } = await page.evaluate(() => {
+    const { html, shadowDOMData, iframeData } = await page.evaluate(() => {
       function captureShadowDOM(root) {
         const shadowTrees = [];
         
@@ -46,14 +47,37 @@ class PageSnapshot {
         return shadowTrees;
       }
       
+      // Add iframe content capture
+      function captureIframes() {
+        const iframes = [];
+        document.querySelectorAll('iframe').forEach(iframe => {
+          try {
+            if (iframe.contentDocument) {
+              iframes.push({
+                src: iframe.src,
+                content: iframe.contentDocument.body.innerHTML
+              });
+            }
+          } catch (e) {
+            // Skip iframes we can't access due to same-origin policy
+            console.log('Could not access iframe content:', e);
+          }
+        });
+        return iframes;
+      }
+      
       return {
         html: document.documentElement.outerHTML,
-        shadowDOMData: captureShadowDOM(document)
+        shadowDOMData: captureShadowDOM(document),
+        iframeData: captureIframes()
       };
     });
 
     // Store the complete shadow DOM data
     this.snapshot.shadowDOM = shadowDOMData;
+
+    // Store the iframe data
+    this.snapshot.iframeData = iframeData;
 
     // Load the HTML into cheerio
     this.$ = cheerio.load(html, {
@@ -67,15 +91,13 @@ class PageSnapshot {
 
     // Generate analysis data
     const { view: interactiveView } = await this.generateInteractiveView(page);
-    this.snapshot.fullInteractive = interactiveView;
     this.snapshot.interactive = interactiveView;
-    this.snapshot.selectorMap = {};
     
     // Set timestamp
     this.snapshot.timestamp = new Date().toISOString();
 
-    // Generate skeleton view after cleaning the page
-    this.snapshot.skeletonView = this.generateSkeletonView();
+    // Generate raw text view
+    this.snapshot.textView = this.generateTextView();
 
     // Save debug files
     await this.saveDebugFiles();
@@ -87,9 +109,8 @@ class PageSnapshot {
   getUrl() { return this.snapshot.url; }
   getHtml() { return this.snapshot.html; }
   getInteractiveView() { return this.snapshot.interactive; }
-  getFullInteractiveView() { return this.snapshot.fullInteractive; }
-  getSelectorMap() { return this.snapshot.selectorMap; }
   getTimestamp() { return this.snapshot.timestamp; }
+  getTextView() { return this.snapshot.textView; }
   
   cleanPage() {
     // Remove unwanted elements
@@ -126,6 +147,8 @@ class PageSnapshot {
   }
 
   async generateInteractiveView(page) {
+    this.selectorCounter = 0;
+    this.selectorToOriginalMap.clear();
     const interactiveView = {
       inputs: [],
       buttons: [],
@@ -140,11 +163,14 @@ class PageSnapshot {
 
       temp.find('input, textarea, select').each((_, el) => {
         const $el = this.$(el);
-        const selector = `${shadowTree.hostElement.tagName} > input[type="${$el.attr('type')}"]`;
+        const originalSelector = `${shadowTree.hostElement.tagName} > input[type="${$el.attr('type')}"]`;
+        
+        const shortSelector = `__SELECTOR__${++this.selectorCounter}`;
+        this.selectorToOriginalMap.set(shortSelector, originalSelector);
         
         interactiveView.inputs.push({
           type: $el.attr('type') || el.tagName.toLowerCase(),
-          selector: selector, // Just use the full selector directly
+          selector: shortSelector,
           placeholder: $el.attr('placeholder'),
           id: $el.attr('id'),
           role: $el.attr('role'),
@@ -158,11 +184,14 @@ class PageSnapshot {
       // Similar changes for buttons in shadow DOM
       temp.find('button, [role="button"]').each((_, el) => {
         const $el = this.$(el);
-        const selector = `${shadowTree.hostElement.tagName} > button`;
+        const originalSelector = `${shadowTree.hostElement.tagName} > button`;
+        
+        const shortSelector = `__SELECTOR__${++this.selectorCounter}`;
+        this.selectorToOriginalMap.set(shortSelector, originalSelector);
         
         interactiveView.buttons.push({
           text: $el.text().trim(),
-          selector: selector, // Just use the full selector directly
+          selector: shortSelector,
           type: $el.attr('type'),
           id: $el.attr('id'),
           role: $el.attr('role'),
@@ -175,15 +204,24 @@ class PageSnapshot {
       // Similar changes for links in shadow DOM
       temp.find('a').each((_, el) => {
         const $el = this.$(el);
-        const selector = `${shadowTree.hostElement.tagName} > a`;
+        const text = $el.text().trim();
+        const ariaLabel = $el.attr('aria-label');
+        
+        // Skip links that don't have text content or aria-label
+        if (!text && !ariaLabel) return;
+
+        const originalSelector = `${shadowTree.hostElement.tagName} > a`;
+        
+        const shortSelector = `__SELECTOR__${++this.selectorCounter}`;
+        this.selectorToOriginalMap.set(shortSelector, originalSelector);
         
         interactiveView.links.push({
-          text: $el.text().trim(),
+          text: text,
           href: $el.attr('href'),
-          selector: selector, // Just use the full selector directly
+          selector: shortSelector,
           id: $el.attr('id'),
           role: $el.attr('role'),
-          'aria-label': $el.attr('aria-label'),
+          'aria-label': ariaLabel,
           shadowPath: `${currentPath} > ${el.tagName.toLowerCase()}`
         });
       });
@@ -201,15 +239,18 @@ class PageSnapshot {
     // Then process regular DOM elements
     this.$('input, textarea, select, [type="search"], [contenteditable="true"], faceplate-search-input, *[role="searchbox"], *[role="textbox"]').each((index, el) => {
       const $el = this.$(el);
-      const selector = this.generateSelector($el);
+      const originalSelector = this.generateSelector($el);
 
       const getAttr = (attr) => {
         return $el.attr(attr) || $el.find(`[${attr}]`).first().attr(attr);
       };
 
+      const shortSelector = `__SELECTOR__${++this.selectorCounter}`;
+      this.selectorToOriginalMap.set(shortSelector, originalSelector);
+      
       interactiveView.inputs.push({
         type: getAttr('type') || el.tagName.toLowerCase(),
-        selector: selector, // Just use the full selector directly
+        selector: shortSelector,
         placeholder: getAttr('placeholder'),
         id: getAttr('id'),
         role: getAttr('role'),
@@ -223,11 +264,14 @@ class PageSnapshot {
     // Process regular buttons
     this.$('button, [role="button"]').each((index, el) => {
       const $el = this.$(el);
-      const selector = this.generateSelector($el);
+      const originalSelector = this.generateSelector($el);
 
+      const shortSelector = `__SELECTOR__${++this.selectorCounter}`;
+      this.selectorToOriginalMap.set(shortSelector, originalSelector);
+      
       interactiveView.buttons.push({
         text: $el.text().trim(),
-        selector: selector, // Just use the full selector directly
+        selector: shortSelector,
         type: $el.attr('type'),
         id: $el.attr('id'),
         role: $el.attr('role'),
@@ -239,17 +283,29 @@ class PageSnapshot {
     // Process regular links
     this.$('a').each((index, el) => {
       const $el = this.$(el);
-      const selector = this.generateSelector($el);
+      const text = $el.text().trim();
+      const ariaLabel = $el.attr('aria-label');
+      
+      // Skip links that don't have text content or aria-label
+      if (!text && !ariaLabel) return;
 
+      const originalSelector = this.generateSelector($el);
+
+      const shortSelector = `__SELECTOR__${++this.selectorCounter}`;
+      this.selectorToOriginalMap.set(shortSelector, originalSelector);
+      
       interactiveView.links.push({
-        text: $el.text().trim(),
+        text: text,
         href: $el.attr('href'),
-        selector: selector, // Just use the full selector directly
+        selector: shortSelector,
         id: $el.attr('id'),
         role: $el.attr('role'),
-        'aria-label': $el.attr('aria-label')
+        'aria-label': ariaLabel
       });
     });
+
+    // Update to only store interactive view once
+    this.snapshot.interactive = interactiveView;
 
     return {
       view: interactiveView
@@ -329,13 +385,13 @@ class PageSnapshot {
 
     fs.writeFileSync(
       path.join(testDir, `interactive_${timestamp}.json`),
-      JSON.stringify(this.snapshot.fullInteractive, null, 2),
+      JSON.stringify(this.snapshot.interactive, null, 2),
       'utf8'
     );
 
     fs.writeFileSync(
-      path.join(testDir, `skeleton_${timestamp}.html`),
-      this.snapshot.skeletonView,
+      path.join(testDir, `text_view_${timestamp}.txt`),
+      this.snapshot.textView,
       'utf8'
     );
 
@@ -343,99 +399,220 @@ class PageSnapshot {
     return timestamp;
   }
 
-  generateSkeletonView() {
-    // Create a deep clone of the current DOM
-    const $skeleton = cheerio.load(this.$.html());
+  replaceSelectorsWithOriginals(text) {
+    // Regular expression to match __SELECTOR__N pattern
+    const selectorPattern = /__SELECTOR__\d+/g;
     
-    // Remove all link elements
-    $skeleton('link').remove();
-    
-    // Remove HTML comments
-    $skeleton('*').contents().each((i, el) => {
-      if (el.type === 'comment') {
-        $skeleton(el).remove();
-      }
+    return text.replace(selectorPattern, (match) => {
+      const originalSelector = this.selectorToOriginalMap.get(match);
+      return originalSelector || match; // Return original if found, otherwise keep unchanged
     });
+  }
 
-
-    // Function to get element's structure signature
-    const getElementSignature = ($el) => {
-      const tag = $el.prop('tagName')?.toLowerCase() || '';
-      const structure = $el.children()
-        .map((_, child) => {
-          const $child = $skeleton(child);
-          return $child.prop('tagName')?.toLowerCase() || '';
-        })
-        .get()
-        .join(',');
+  generateTextView() {
+    // Clean main document HTML - only body content
+    const $main = this.$;
+    $main('body *').each((_, el) => {
+      const $el = $main(el);
+      const attrs = Object.keys(el.attribs || {});
       
-      return `${tag}[${structure}]`;
-    };
-
-    // Find repeating elements in any container
-    $skeleton('*').each((_, container) => {
-      const $container = $skeleton(container);
-      const children = $container.children().toArray();
-      
-      if (children.length >= 4) {
-        let repeatingGroups = [];
-        let currentGroup = [children[0]];
-        const firstSignature = getElementSignature($skeleton(children[0]));
-        
-        // Group consecutive elements with same structure
-        for (let i = 1; i < children.length; i++) {
-          const currentSignature = getElementSignature($skeleton(children[i]));
-          if (currentSignature === firstSignature) {
-            currentGroup.push(children[i]);
-          } else {
-            if (currentGroup.length >= 3) {
-              repeatingGroups.push(currentGroup);
-            }
-            currentGroup = [children[i]];
-          }
-        }
-        
-        // Handle last group
-        if (currentGroup.length >= 3) {
-          repeatingGroups.push(currentGroup);
-        }
-
-        // Replace repeating elements with first, comment, and last
-        repeatingGroups.forEach(group => {
-          const count = group.length;
-          if (count >= 3) {
-            const $first = $skeleton(group[0]);
-            const $last = $skeleton(group[count - 1]);
-            
-            // Remove middle elements
-            for (let i = 1; i < count - 1; i++) {
-              $skeleton(group[i]).remove();
-            }
-            
-            // Insert comment between first and last
-            $first.after(`<!-- ${count - 2} similar elements -->`) 
-          }
-        });
-      }
-    });
-
-    // Process attributes (your existing attribute processing code)
-    $skeleton('*').each((i, el) => {
-      const $el = $skeleton(el);
-      const attributes = Object.keys(el.attribs || {});
-      
-      attributes.forEach(attr => {
-        const keepAttributes = ['type', 'href', 'role', 'target', 'rel', 'for', 'value', 'action', 'aria-label'];
-       if (!keepAttributes.includes(attr)) {
+      // Remove all attributes except src, aria-label, and href
+      attrs.forEach(attr => {
+        if (attr !== 'src' && attr !== 'aria-label' && attr !== 'href') {
           $el.removeAttr(attr);
         }
       });
     });
+    
+    let fullSource = $main('body').html();
+    
+    // Add shadow DOM content
+    if (this.snapshot.shadowDOM) {
+      this.snapshot.shadowDOM.forEach(shadow => {
+        const $shadow = cheerio.load(shadow.content);
+        
+        // Clean attributes in shadow DOM
+        $shadow('*').each((_, el) => {
+          const $el = $shadow(el);
+          const attrs = Object.keys(el.attribs || {});
+          
+          attrs.forEach(attr => {
+            if (attr !== 'src' && attr !== 'aria-label' && attr !== 'href') {
+              $el.removeAttr(attr);
+            }
+          });
+        });
+        
+        fullSource += $shadow.html();
+      });
+    }
 
-    return $skeleton.html()
+    // Add iframe content
+    if (this.snapshot.iframeData) {
+      this.snapshot.iframeData.forEach(iframe => {
+        const $iframe = cheerio.load(iframe.content);
+        // Clean iframe content attributes
+        $iframe('*').each((_, el) => {
+          const $el = $iframe(el);
+          const attrs = Object.keys(el.attribs || {});
+          attrs.forEach(attr => {
+            if (attr !== 'src' && attr !== 'aria-label' && attr !== 'href') {
+              $el.removeAttr(attr);
+            }
+          });
+        });
+        fullSource += $iframe.html();
+      });
+    }
+
+    // Remove common HTML tags but keep important attributes and all content
+    return fullSource
+      // Simple tag removals for elements with attributes we want to keep
+      .replace(/<a/g, '')
+      .replace(/<div/g, '')
+      .replace(/<button/g, '')
+      .replace(/<img/g, '')
+      .replace(/<picture/g, '')
+      .replace(/<\/button>/g, '')
+      .replace(/<\/div>/g, '')
+      .replace(/<\/a>/g, '')
+      .replace(/<\/picture>/g, '')
+      // Remove other common elements
+      .replace(/<\/?span>/g, '')
+      .replace(/<\/?p>/g, '')
+      .replace(/<\/?section>/g, '')
+      .replace(/<\/?article>/g, '')
+      .replace(/<\/?main>/g, '')
+      .replace(/<\/?header>/g, '')
+      .replace(/<\/?footer>/g, '')
+      .replace(/<\/?nav>/g, '')
+      .replace(/<\/?aside>/g, '')
+      .replace(/<\/?ul>/g, '')
+      .replace(/<\/?ol>/g, '')
+      .replace(/<\/?li>/g, '')
+      .replace(/<\/?h[1-6]>/g, '')
+      .replace(/<\/?strong>/g, '')
+      .replace(/<\/?em>/g, '')
+      .replace(/<\/?i>/g, '')
+      .replace(/<\/?b>/g, '')
+      .replace(/<\/?small>/g, '')
+      .replace(/<\/?br>/g, '\n')
+      .replace(/<\/?hr>/g, '\n---\n')
+      .replace(/<\/?input[^>]*>/g, '')
+      .replace(/<\/?label[^>]*>/g, '')
+      .replace(/>/g, '')
+      // Clean up excess whitespace
       .replace(/\s+/g, ' ')
-      .replace(/>\s+</g, '><')
       .trim();
+  }
+
+  async parseTextViewWithAI(structurePrompt) {
+    try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error('GEMINI_API_KEY not found in environment variables');
+      }
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({
+        model: "gemini-1.5-flash-8b",
+        generationConfig: {
+          temperature: 0.7,
+          topP: 0.95,
+          topK: 40,
+          maxOutputTokens: 8192,
+          responseMimeType: "application/json"
+        }
+      });
+
+      const textContent = this.generateTextView();
+
+      const systemPrompt = `You are an AI assistant that parses webpage text content and extracts structured information.
+
+Input Text Content from Webpage:
+${textContent}
+
+Instructions for Parsing:
+${structurePrompt}
+
+Please provide your response in the following JSON format:
+{
+  "items": [
+    // Each item should be an object with properly separated key-value pairs
+    // Example structures for different types of content:
+    
+    // Product listing example:
+    {
+      "name": "string",
+      "price": "string",
+      "brand": "string",
+      "category": "string",
+      "rating": "string",
+      "reviews_count": "string",
+      "specifications": ["string"],
+      "in_stock": true,
+      "is_on_sale": false,
+      "has_warranty": true,
+      "free_shipping": true
+    },
+    
+    // Article/News example:
+    {
+      "title": "string",
+      "author": "string",
+      "date": "string",
+      "category": "string",
+      "summary": "string",
+      "tags": ["string"],
+      "read_time": "string",
+      "is_premium": false,
+      "is_featured": true,
+      "comments_enabled": true,
+      "breaking_news": false
+    }
+  ]
+}
+
+Important:
+- Ensure the response is valid JSON
+- Split all information into appropriate key-value pairs
+- Use clear, descriptive keys for each piece of information
+- Don't combine different types of information into single fields
+- Keep data well-structured and organized
+- We need to extract as much relevant data as possible`;
+
+      // Generate response from Gemini
+      const result = await model.generateContent({
+        contents: [{ role: "user", parts: [{ text: systemPrompt }]}]
+      });
+
+      const response = await result.response;
+      const parsedText = response.text();
+
+      // Save the response to test folder
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const testDir = path.join(__dirname, 'test');
+      if (!fs.existsSync(testDir)) {
+        fs.mkdirSync(testDir);
+      }
+
+      fs.writeFileSync(
+        path.join(testDir, `ai_parsed_${timestamp}.txt`),
+        `Structure Prompt:\n${structurePrompt}\n\nParsed Result:\n${parsedText}`,
+        'utf8'
+      );
+
+      // Try to parse the response as JSON
+      try {
+        return JSON.parse(parsedText);
+      } catch (e) {
+        console.warn('Warning: AI response was not valid JSON, returning raw text');
+        return parsedText;
+      }
+
+    } catch (error) {
+      console.error('Failed to parse text with AI:', error);
+      throw error;
+    }
   }
 }
 
@@ -443,14 +620,13 @@ module.exports = PageSnapshot;
 
 if (require.main === module) {
   const puppeteer = require('puppeteer');
+  require('dotenv').config();
 
   (async () => {
     try {
-      // Get URL from command line argument or use default
-      const url = 'https://reddit.com';
+      const url = 'https://airbnb.com';
       console.log(`Testing PageSnapshot with URL: ${url}`);
 
-      // Launch browser
       console.log('Launching browser...');
       const browser = await puppeteer.launch({ 
         headless: false,
@@ -460,22 +636,28 @@ if (require.main === module) {
         }
       });
 
-      // Create new page and navigate
       const page = await browser.newPage();
       console.log(`Navigating to ${url}...`);
       await page.goto(url, { waitUntil: 'networkidle2', timeout: 120000 });
 
-      // Take snapshot
       console.log('Taking page snapshot...');
       const snapshot = new PageSnapshot();
       const result = await snapshot.captureSnapshot(page);
-      
       console.log('\nSnapshot captured successfully!');
+      // Test the new AI parsing function
+      console.log('\nTesting AI parsing...');
+      const structurePrompt = `Please extract the Airbnb listings information in JSON format. 
+
+`;
+
+      const parsedResult = await snapshot.parseTextViewWithAI(structurePrompt);
+      console.log('\nAI Parsing Result:', parsedResult);
+
+      console.log('\nSnapshot and parsing complete!');
       console.log('Files saved with timestamp:', result.timestamp);
       console.log('\nDebug files location:', path.join(__dirname, 'test'));
 
-      // Close browser
-      await browser.close();
+      //await browser.close();
       console.log('\nBrowser closed. Test complete!');
 
     } catch (error) {

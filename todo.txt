@@ -36,3 +36,26 @@ only get interactive elements that are currently visible on the page
 
 so for automation : provide interactive map of visible elements on the page / source of current sivile elements on the page 
 for data extraction : the AI writes a prompt on the data to extract, then it uses a function that calls another gemini request with full source of page (cleaned) 
+
+
+the interactive map: for the ai to know what he's bale to interact with 
+the page source: for the ai to know what exists on the page (content)
+
+problem: 
+airbnb website has very long selectors + huge source
+
+
+todo: 
+remove selection done
+compress selectors, and decompress it in result code done
+make the page source only contain  the contents and links (or as a new view, to be safe) done
+create a functino taht woudl recevie the page content and the prompt, and output the json (use gemini flash 8b) done 
+
+make the AI be able to detect that ishoudl use the function and use it in case of need for data extraction 
+
+
+
+
+benchmarks: 
+-go to airbnb,scroll to load all listings, extract all listings details 
+-go to anonymiosu isntagram stories, and get latest stories 
