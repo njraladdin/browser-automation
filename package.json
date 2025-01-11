@@ -15,6 +15,7 @@
     "cheerio": "^1.0.0",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "puppeteer": "^23.11.1"
+    "puppeteer": "^23.11.1",
+    "sqlite3": "^5.1.7"
   }
 }

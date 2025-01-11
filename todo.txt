@@ -56,9 +56,20 @@ make the AI be able to detect that ishoudl use the function and use it in case o
 
 display extracted data in frontend, done 
 AI shoudl have acess to extracted data (number, first item and last item), done 
-keep screenshot preview of the page in frontend and send it after each step. be able to run headlessly
-save a steps flow in frontend  and rerun later 
-when submitting a step, process it thourgh gmeini to amke sure it's a focused single stpe, otherwise show suggestions ot split it with a popup to accept 
+keep screenshot preview of the page in frontend and send it after each step, done 
+
+you can create and save flows
+
+you can play a single step 
+
+make step UI conssitent before and after adding (same layout)
+
+run websocket server to easily track what's happening in the backend (to easily debug what's going on evne when backend is deployed).
+
+wbesocket connection is conencted to a fflow, if the websocket connection cuts, we close the browser and rmeove flow form active list 
+
+
+create profile, so flows are connected to each user profile (for simplciity, user creates / signs it with just his username)
 
 
 run each benchmark, troubleshoot and improve 

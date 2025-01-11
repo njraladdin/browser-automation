@@ -5,20 +5,39 @@
   <link href="/css/styles.css" rel="stylesheet">
 </head>
 <body>
-  <div class="header">
-    <div>
-      <h1>Web Automation Builder</h1>
+  <div id="flowModal" class="modal">
+    <div class="modal-content">
+      <h2>Create New Flow</h2>
+      <div class="form-group">
+        <label for="flowName">Flow Name:</label>
+        <input type="text" id="flowName" placeholder="Enter flow name..." />
+      </div>
+      <div class="form-group">
+        <label for="flowDescription">Description (optional):</label>
+        <textarea id="flowDescription" placeholder="Enter flow description..."></textarea>
+      </div>
+      <div class="modal-buttons">
+        <button onclick="createFlow()" class="btn btn-primary">Create</button>
+        <button onclick="closeFlowModal()" class="btn">Cancel</button>
+      </div>
     </div>
-    <div>
-      <button onclick="executeSteps()" class="btn btn-primary" id="playButton" title="Run automation from where it left off">
-        <span class="btn-text">▶ Play Automation</span>
+  </div>
+
+  <div class="header">
+    <div class="header-left">
+      <h1>Web Automation Builder</h1>
+      <div class="flow-selector">
+        <select id="flowSelect" onchange="selectFlow(this.value)">
+          <option value="">Select a flow...</option>
+        </select>
+        <button onclick="showFlowModal()" class="btn btn-primary">New Flow</button>
+      </div>
+    </div>
+    <div class="header-right">
+      <button onclick="executeSteps()" class="btn btn-primary" id="playButton" disabled title="Run automation from where it left off">
+        <span class="btn-text">▶ Play All Steps</span>
       </button>
-      <button onclick="resetExecution()" class="btn" title="Reset progress to start">
-        Reset Progress
-      </button>
-      <button onclick="clearSteps()" class="btn" title="Delete all automation steps">
-        Delete All
-      </button>
+      <button onclick="resetExecution()" class="btn" disabled>Reset Progress</button>
     </div>
   </div>
 
@@ -29,6 +48,7 @@
   <script>
     let steps = [];
     let lastExecutedStep = -1;
+    let currentFlowId = null;
 
     // Initialize with first empty step
     window.onload = () => {
@@ -38,6 +58,11 @@
     };
 
     async function addStep(stepNumber) {
+      if (!currentFlowId) {
+        showStatus('Please select or create a flow first', 'error');
+        return;
+      }
+      
       const input = document.querySelector(`#step-input-${stepNumber}`);
       if (!input || !input.value) return;
 
@@ -52,7 +77,7 @@
       stepBlock.classList.add('loading');
       
       try {
-        const response = await fetch('/step', {
+        const response = await fetch(`/flows/${currentFlowId}/step`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ instructions })
@@ -87,9 +112,19 @@
       const stepsList = document.getElementById('stepsList');
       const playButton = document.getElementById('playButton');
       
+      // If no flow is selected, show message instead of steps
+      if (!currentFlowId) {
+        stepsList.innerHTML = `
+          <div class="no-flow-message">
+            <p>👆 Please select or create a flow to start adding automation steps</p>
+          </div>
+        `;
+        return;
+      }
+      
       playButton.disabled = steps.length === 0;
       
-      const buttonText = lastExecutedStep >= 0 ? '▶ Continue Automation' : '▶ Play Automation';
+      const buttonText = lastExecutedStep >= 0 ? '▶ Continue All Steps' : '▶ Play All Steps';
       playButton.querySelector('.btn-text').textContent = buttonText;
       
       const stepsHtml = steps.map((step, index) => `
@@ -105,6 +140,11 @@
                   </div>
                 ` : ''}
               </div>
+              ${(index === 0 || index === lastExecutedStep + 1) ? `
+                <button onclick="executeStep(${index})" class="btn btn-primary">
+                  ▶ Play Step
+                </button>
+              ` : ''}
             </div>
             <div class="step-thumbnail">
               ${step.screenshot ? `
@@ -133,9 +173,7 @@
             <div class="step-main-content">
               <div class="step-number">${newStepNumber}</div>
               <div class="step-input-container">
-                <div class="step-label">
-                  👉 ${newStepNumber === 1 ? "First step" : "Next step"}
-                </div>
+            
                 <input type="text" 
                   id="step-input-${newStepNumber}" 
                   placeholder="Go to website, click button, type text..."
@@ -164,6 +202,11 @@
     }
 
     async function executeSteps() {
+      if (!currentFlowId) {
+        showStatus('Please select a flow first', 'error');
+        return;
+      }
+
       const playButton = document.getElementById('playButton');
       playButton.disabled = true;
       playButton.querySelector('.btn-text').textContent = '⏳ Running...';
@@ -176,7 +219,7 @@
       }
       
       try {
-        const response = await fetch('/execute', {
+        const response = await fetch(`/flows/${currentFlowId}/execute`, {
           method: 'POST'
         });
         
@@ -198,7 +241,7 @@
         playButton.disabled = false;
       } finally {
         // Update button text based on execution state when done
-        const buttonText = lastExecutedStep >= 0 ? '▶ Continue Automation' : '▶ Play Automation';
+        const buttonText = lastExecutedStep >= 0 ? '▶ Continue All Steps' : '▶ Play All Steps';
         playButton.querySelector('.btn-text').textContent = buttonText;
         
         // Remove executing class
@@ -215,33 +258,20 @@
     }
 
     async function resetExecution() {
+      if (!currentFlowId) {
+        showStatus('Please select a flow first', 'error');
+        return;
+      }
+
       const status = document.getElementById('status');
       const playButton = document.getElementById('playButton');
       
       try {
-        await fetch('/reset-execution', { method: 'POST' });
+        await fetch(`/flows/${currentFlowId}/reset`, { method: 'POST' });
         lastExecutedStep = -1;
         updateStepsList();
         status.textContent = 'Execution reset to beginning';
-        playButton.disabled = false; // Re-enable play button after reset
-      } catch (error) {
-        status.textContent = `Error: ${error.message}`;
-      }
-    }
-
-    async function clearSteps() {
-      if (!confirm('Are you sure you want to delete all steps? This cannot be undone.')) {
-        return;
-      }
-      const status = document.getElementById('status');
-      const playButton = document.getElementById('playButton');
-      
-      try {
-        await fetch('/clear', { method: 'POST' });
-        steps = [];
-        updateStepsList();
-        status.textContent = 'All steps cleared';
-        playButton.disabled = false; // Re-enable play button after clearing
+        playButton.disabled = false;
       } catch (error) {
         status.textContent = `Error: ${error.message}`;
       }
@@ -274,6 +304,144 @@
       const dataBlock = header.parentElement;
       dataBlock.classList.toggle('collapsed');
     }
+
+    async function loadFlows() {
+      try {
+        const response = await fetch('/flows');
+        const flows = await response.json();
+        const select = document.getElementById('flowSelect');
+        
+        select.innerHTML = '<option value="">Select a flow...</option>' + 
+          flows.map(flow => `
+            <option value="${flow.id}">${flow.name}</option>
+          `).join('');
+      } catch (error) {
+        showStatus('Failed to load flows', 'error');
+      }
+    }
+
+    function showFlowModal() {
+      document.getElementById('flowModal').style.display = 'block';
+    }
+
+    function closeFlowModal() {
+      document.getElementById('flowModal').style.display = 'none';
+    }
+
+    async function createFlow() {
+      const name = document.getElementById('flowName').value;
+      const description = document.getElementById('flowDescription').value;
+      
+      if (!name) {
+        showStatus('Flow name is required', 'error');
+        return;
+      }
+      
+      try {
+        const response = await fetch('/flows', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, description })
+        });
+        
+        const flow = await response.json();
+        await loadFlows();
+        closeFlowModal();
+        
+        // Set the select value to the new flow
+        const flowSelect = document.getElementById('flowSelect');
+        flowSelect.value = flow.id;
+        
+        // Clear the form for next time
+        document.getElementById('flowName').value = '';
+        document.getElementById('flowDescription').value = '';
+        
+        // Select the new flow
+        selectFlow(flow.id);
+      } catch (error) {
+        showStatus('Failed to create flow', 'error');
+      }
+    }
+
+    async function selectFlow(flowId) {
+      if (!flowId) {
+        // Clear current flow when selecting empty option
+        currentFlowId = null;
+        steps = [];
+        lastExecutedStep = -1;
+        disableAutomationButtons();
+        updateStepsList();
+        return;
+      }
+      
+      try {
+        const response = await fetch(`/flows/${flowId}/steps`);
+        const flowSteps = await response.json();
+        
+        steps = flowSteps.map(step => ({
+          instructions: step.instructions,
+          code: step.code
+        }));
+        
+        currentFlowId = flowId;
+        lastExecutedStep = -1; // Reset execution state for new flow
+        enableAutomationButtons();
+        updateStepsList();
+      } catch (error) {
+        showStatus('Failed to load flow steps', 'error');
+      }
+    }
+
+    function disableAutomationButtons() {
+      document.getElementById('playButton').disabled = true;
+      document.querySelectorAll('.header-right .btn').forEach(btn => btn.disabled = true);
+    }
+
+    function enableAutomationButtons() {
+      document.getElementById('playButton').disabled = false;
+      document.querySelectorAll('.header-right .btn').forEach(btn => btn.disabled = false);
+    }
+
+    // Add this to window.onload to load flows on page load
+    window.onload = () => {
+      loadFlows();
+      updateStepsList(); // This will now show the "select a flow" message
+    };
+
+    async function executeStep(stepIndex) {
+      if (!currentFlowId) {
+        showStatus('Please select a flow first', 'error');
+        return;
+      }
+
+      // Disable all play step buttons during execution
+      document.querySelectorAll('.step-block .btn-primary').forEach(btn => btn.disabled = true);
+      
+      const stepBlock = document.querySelector(`#step-${stepIndex + 1}`);
+      stepBlock.classList.add('executing');
+      
+      try {
+        const response = await fetch(`/flows/${currentFlowId}/execute-step/${stepIndex}`, {
+          method: 'POST'
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          lastExecutedStep = stepIndex;
+          steps = data.steps;
+          updateStepsList();
+          showStatus('Step executed successfully!');
+        } else {
+          showStatus(`Error: ${data.error}`, 'error');
+        }
+      } catch (error) {
+        showStatus(`Error: ${error.message}`, 'error');
+      } finally {
+        stepBlock.classList.remove('executing');
+      }
+    }
   </script>
+
+
 </body>
 </html> 

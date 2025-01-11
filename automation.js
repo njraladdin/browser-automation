@@ -7,94 +7,104 @@ const fs = require('fs');
 const util = require('util');
 const fsPromises = require('fs').promises;
 
-// Create a single instance of PageSnapshot to reuse
-const pageSnapshot = new PageSnapshot();
+class AutomationFlow {
+  constructor() {
+    this.pageSnapshot = new PageSnapshot();
+    this.browser = null;
+    this.page = null;
+    this.automationSteps = [];
+    this.lastExecutedStepIndex = -1;
+    this.INITIAL_URL = 'https://airbnb.com/';
+    this.browserInitializing = null;
+  }
 
-let browser = null;
-let page = null;
-let automationSteps = [];
-let lastExecutedStepIndex = -1;
+  async delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
 
+  async initBrowser() {
+    if (this.browser && this.page) {
+      return { browser: this.browser, page: this.page };
+    }
 
-const INITIAL_URL = 'https://airbnb.com/';
+    if (this.browserInitializing) {
+      return this.browserInitializing;
+    }
 
-
-async function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-// Initialize browser immediately
-async function initBrowser() {
-  if (!browser) {
-    console.log('Launching browser...');
-    browser = await puppeteer.launch({ 
-      headless: false,
-      defaultViewport: {
-        width: 1280,
-        height: 800
+    this.browserInitializing = (async () => {
+      try {
+        console.log('Launching browser...');
+        this.browser = await puppeteer.launch({ 
+          headless: false,
+          defaultViewport: {
+            width: 1280,
+            height: 800
+          }
+        });
+        this.page = await this.browser.newPage();
+        await this.page.goto(this.INITIAL_URL);
+        return { browser: this.browser, page: this.page };
+      } catch (error) {
+        console.error('Failed to launch browser:', error);
+        this.browser = null;
+        this.page = null;
+        throw error;
+      } finally {
+        this.browserInitializing = null;
       }
-    });
-    page = await browser.newPage();
-    await page.goto(INITIAL_URL);
-  }
-  return { browser, page };
-}
+    })();
 
-// Add immediate browser initialization
-initBrowser().catch(error => {
-  console.error('Failed to launch browser:', error);
-});
-
-async function savePromptForDebug(prompt, instructions) {
-  const testDir = path.join(__dirname, 'test');
-  if (!fs.existsSync(testDir)) {
-    fs.mkdirSync(testDir);
+    return this.browserInitializing;
   }
 
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  fs.writeFileSync(
-    path.join(testDir, `prompt_${timestamp}.txt`),
-    `Instructions: ${instructions}\n\nFull Prompt:\n${prompt}`,
-    'utf8'
-  );
-}
-
-async function addAutomationStep(instructions) {
-  try {
-    console.log('Generating code for new step...');
-    
-    if (!browser) {
-      throw new Error('Browser is not initialized. Cannot proceed with automation.');
+  async savePromptForDebug(prompt, instructions) {
+    const testDir = path.join(__dirname, 'test');
+    if (!fs.existsSync(testDir)) {
+      fs.mkdirSync(testDir);
     }
 
-    if (!page) {
-      page = await browser.newPage();
-      console.log('Created new browser page');
-    }
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    fs.writeFileSync(
+      path.join(testDir, `prompt_${timestamp}.txt`),
+      `Instructions: ${instructions}\n\nFull Prompt:\n${prompt}`,
+      'utf8'
+    );
+  }
 
-    const snapshot = await pageSnapshot.captureSnapshot(page);
+  async addAutomationStep(instructions) {
+    try {
+      console.log('Generating code for new step...');
+      
+      if (!this.browser || !this.page) {
+        console.log('Browser not initialized, initializing now...');
+        const { browser, page } = await this.initBrowser();
+        this.browser = browser;
+        this.page = page;
+      }
 
-    const previousSteps = automationSteps.map((step, index) => {
-      let extractedDataSummary = '';
-      if (step.extractedData) {
-        const data = step.extractedData;
-        if (data?.items) {
-          const items = data.items;
-          extractedDataSummary = `
+      const snapshot = await this.pageSnapshot.captureSnapshot(this.page);
+
+      const previousSteps = this.automationSteps.map((step, index) => {
+        let extractedDataSummary = '';
+        if (step.extractedData) {
+          const data = step.extractedData;
+          if (data?.items) {
+            const items = data.items;
+            extractedDataSummary = `
 Extracted Data Summary:
 - Total items: ${items.length}
 - First item: ${JSON.stringify(items[0])}
 - Last item: ${JSON.stringify(items[items.length - 1])}`;
+          }
         }
-      }
 
-      return `
+        return `
 Step ${index + 1}: ${step.instructions}
 Code:
 ${step.code}${extractedDataSummary}`;
-    }).join('\n');
+      }).join('\n');
 
-    const systemPrompt = `You are a Puppeteer code generator. Generate ONLY the executable code without any function declarations or wrappers.
+      const systemPrompt = `You are a Puppeteer code generator. Generate ONLY the executable code without any function declarations or wrappers.
 
 Requirements:
 - Use modern JavaScript syntax with async/await
@@ -158,180 +168,229 @@ ${previousSteps}` : ''}
 
 User Instructions: ${instructions}`;
 
-    await savePromptForDebug(systemPrompt, instructions);
-    
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error('GEMINI_API_KEY not found in environment variables');
-    }
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash-exp",
-      generationConfig: {
-        temperature: 0.7,
-        topP: 0.95,
-        topK: 40,
-        maxOutputTokens: 8192,
-      }
-    });
-    
-    const result = await model.generateContent(systemPrompt);
-    const response = await result.response;
-    let code = response.text().trim()
-      .replace(/```javascript\n?/g, '')
-      .replace(/```\n?/g, '');
-    
-    console.log('Code before selector replacement:', code);
-    
-    // Replace short selectors with original selectors
-    code = pageSnapshot.replaceSelectorsWithOriginals(code);
-    
-    console.log('Code after selector replacement:', code);
-    
-    console.log({code});
-    
-    automationSteps.push({ 
-      instructions, 
-      code,
-      screenshot: null
-    });
-    
-    return { success: true, code };
-  } catch (error) {
-    console.error('Failed to add step:', error);
-    return { success: false, error: error.message };
-  }
-}
-async function parseTextViewWithAI(structurePrompt) {
-  try {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error('GEMINI_API_KEY not found in environment variables');
-    }
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-flash-8b",
-      generationConfig: {
-        temperature: 0.7,
-        topP: 0.95,
-        topK: 40,
-        maxOutputTokens: 8192,
-        responseMimeType: "application/json"
-      }
-    });
-
-    const textContent = pageSnapshot.generateTextView();
-
-    const systemPrompt = `You are an AI assistant that parses webpage text content and extracts structured information.
-
-    Input Text Content from Webpage:
-    ${textContent}
-
-    Instructions for Parsing:
-    ${structurePrompt}
-
-    Please provide your response in the following JSON format:
-    {
-      "items": [
-        // Each item should be an object with properly separated key-value pairs
-        // Example structures for different types of content:
-        
-        // Product listing example:
-        {
-          "name": "string",
-          "price": "string",
-          "brand": "string",
-          "category": "string",
-          "rating": "string",
-          "reviews_count": "string",
-          "specifications": ["string"],
-          "in_stock": true,
-          "is_on_sale": false,
-          "has_warranty": true,
-          "free_shipping": true
-        },
-        
-        // Article/News example:
-        {
-          "title": "string",
-          "author": "string",
-          "date": "string",
-          "category": "string",
-          "summary": "string",
-          "tags": ["string"],
-          "read_time": "string",
-          "is_premium": false,
-          "is_featured": true,
-          "comments_enabled": true,
-          "breaking_news": false
-        }
-      ]
-    }
-
-    Important:
-    - Ensure the response is valid JSON
-    - Split all information into appropriate key-value pairs
-    - Use clear, descriptive keys for each piece of information
-    - Don't combine different types of information into single fields
-    - Keep data well-structured and organized
-    - We need to extract as much relevant data as possible`;
-
-    const result = await model.generateContent({
-      contents: [{ role: "user", parts: [{ text: systemPrompt }]}]
-    });
-
-    const response = await result.response;
-    const parsedText = response.text();
-
-    // Save debug file
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const testDir = path.join(__dirname, 'test');
-    if (!fs.existsSync(testDir)) {
-      fs.mkdirSync(testDir);
-    }
-
-    fs.writeFileSync(
-      path.join(testDir, `ai_parsed_${timestamp}.txt`),
-      `Structure Prompt:\n${structurePrompt}\n\nParsed Result:\n${parsedText}`,
-      'utf8'
-    );
-
-    // Parse the response and update the current step
-    try {
-      const extractedData = JSON.parse(parsedText);
-      if (lastExecutedStepIndex < automationSteps.length) {
-        automationSteps[lastExecutedStepIndex].extractedData = extractedData;
-      }
-      return extractedData;
-    } catch (e) {
-      console.warn('Warning: AI response was not valid JSON, returning raw text');
-      if (lastExecutedStepIndex < automationSteps.length) {
-        automationSteps[lastExecutedStepIndex].extractedData = parsedText;
-      }
-      return parsedText;
-    }
-
-  } catch (error) {
-    console.error('Failed to parse text with AI:', error);
-    throw error;
-  }
-}
-
-
-async function executeCurrentSteps() {
-  try {
-    if (!browser || !page) {
-      await initBrowser();
-    }
-
-    console.log('Executing automation steps...');
-    const startIndex = lastExecutedStepIndex + 1;
-    
-    for (let i = startIndex; i < automationSteps.length; i++) {
-      const step = automationSteps[i];
-      console.log(`Executing step ${i + 1}: ${step.instructions}`);
+      await this.savePromptForDebug(systemPrompt, instructions);
       
-      lastExecutedStepIndex = i;
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error('GEMINI_API_KEY not found in environment variables');
+      }
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({
+        model: "gemini-2.0-flash-exp",
+        generationConfig: {
+          temperature: 0.7,
+          topP: 0.95,
+          topK: 40,
+          maxOutputTokens: 8192,
+        }
+      });
+      
+      const result = await model.generateContent(systemPrompt);
+      const response = await result.response;
+      let code = response.text().trim()
+        .replace(/```javascript\n?/g, '')
+        .replace(/```\n?/g, '');
+      
+      console.log('Code before selector replacement:', code);
+      
+      // Replace short selectors with original selectors
+      code = this.pageSnapshot.replaceSelectorsWithOriginals(code);
+      
+      console.log('Code after selector replacement:', code);
+      
+      console.log({code});
+      
+      this.automationSteps.push({ 
+        instructions, 
+        code,
+        screenshot: null
+      });
+      
+      return { success: true, code };
+    } catch (error) {
+      console.error('Failed to add step:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async parseTextViewWithAI(structurePrompt) {
+    try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error('GEMINI_API_KEY not found in environment variables');
+      }
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({
+        model: "gemini-1.5-flash-8b",
+        generationConfig: {
+          temperature: 0.7,
+          topP: 0.95,
+          topK: 40,
+          maxOutputTokens: 8192,
+          responseMimeType: "application/json"
+        }
+      });
+
+      const textContent = this.pageSnapshot.generateTextView();
+
+      const systemPrompt = `You are an AI assistant that parses webpage text content and extracts structured information.
+
+      Input Text Content from Webpage:
+      ${textContent}
+
+      Instructions for Parsing:
+      ${structurePrompt}
+
+      Please provide your response in the following JSON format:
+      {
+        "items": [
+          // Each item should be an object with properly separated key-value pairs
+          // Example structures for different types of content:
+          
+          // Product listing example:
+          {
+            "name": "string",
+            "price": "string",
+            "brand": "string",
+            "category": "string",
+            "rating": "string",
+            "reviews_count": "string",
+            "specifications": ["string"],
+            "in_stock": true,
+            "is_on_sale": false,
+            "has_warranty": true,
+            "free_shipping": true
+          },
+          
+          // Article/News example:
+          {
+            "title": "string",
+            "author": "string",
+            "date": "string",
+            "category": "string",
+            "summary": "string",
+            "tags": ["string"],
+            "read_time": "string",
+            "is_premium": false,
+            "is_featured": true,
+            "comments_enabled": true,
+            "breaking_news": false
+          }
+        ]
+      }
+
+      Important:
+      - Ensure the response is valid JSON
+      - Split all information into appropriate key-value pairs
+      - Use clear, descriptive keys for each piece of information
+      - Don't combine different types of information into single fields
+      - Keep data well-structured and organized
+      - We need to extract as much relevant data as possible`;
+
+      const result = await model.generateContent({
+        contents: [{ role: "user", parts: [{ text: systemPrompt }]}]
+      });
+
+      const response = await result.response;
+      const parsedText = response.text();
+
+      // Save debug file
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const testDir = path.join(__dirname, 'test');
+      if (!fs.existsSync(testDir)) {
+        fs.mkdirSync(testDir);
+      }
+
+      fs.writeFileSync(
+        path.join(testDir, `ai_parsed_${timestamp}.txt`),
+        `Structure Prompt:\n${structurePrompt}\n\nParsed Result:\n${parsedText}`,
+        'utf8'
+      );
+
+      // Parse the response and update the current step
+      try {
+        const extractedData = JSON.parse(parsedText);
+        if (this.lastExecutedStepIndex < this.automationSteps.length) {
+          this.automationSteps[this.lastExecutedStepIndex].extractedData = extractedData;
+        }
+        return extractedData;
+      } catch (e) {
+        console.warn('Warning: AI response was not valid JSON, returning raw text');
+        if (this.lastExecutedStepIndex < this.automationSteps.length) {
+          this.automationSteps[this.lastExecutedStepIndex].extractedData = parsedText;
+        }
+        return parsedText;
+      }
+
+    } catch (error) {
+      console.error('Failed to parse text with AI:', error);
+      throw error;
+    }
+  }
+
+  async executeCurrentSteps() {
+    try {
+      console.log('Executing automation steps...');
+      const startIndex = this.lastExecutedStepIndex + 1;
+      
+      for (let i = startIndex; i < this.automationSteps.length; i++) {
+        const result = await this.executeSingleStep(i);
+        if (!result.success) {
+          throw new Error(result.error);
+        }
+      }
+
+      const updatedSteps = this.automationSteps.map(step => ({
+        instructions: step.instructions,
+        code: step.code,
+        extractedData: step.extractedData,
+        screenshot: step.screenshot
+      }));
+
+      return { 
+        success: true, 
+        lastExecutedStep: this.lastExecutedStepIndex,
+        steps: updatedSteps
+      };
+    } catch (error) {
+      console.error('Automation failed:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async resetExecution() {
+    this.lastExecutedStepIndex = -1;
+    return { success: true };
+  }
+
+  async closeBrowser() {
+    if (this.browser) {
+      await this.browser.close();
+      this.browser = null;
+      this.page = null;
+    }
+    return { success: true };
+  }
+
+  async executeSingleStep(stepIndex) {
+    try {
+      if (!this.browser || !this.page) {
+        await this.initBrowser();
+      }
+
+      if (stepIndex < 0 || stepIndex >= this.automationSteps.length) {
+        throw new Error('Invalid step index');
+      }
+
+      // Verify step can be executed
+      if (stepIndex > 0 && stepIndex !== this.lastExecutedStepIndex + 1) {
+        throw new Error('Can only execute first step or next sequential step');
+      }
+
+      console.log(`Executing step ${stepIndex + 1}: ${this.automationSteps[stepIndex].instructions}`);
+      
+      const step = this.automationSteps[stepIndex];
+      this.lastExecutedStepIndex = stepIndex;
       
       const stepFunction = new Function(
         'page', 
@@ -341,69 +400,40 @@ async function executeCurrentSteps() {
         })(page, parseTextViewWithAI)`
       );
 
-      await stepFunction(page, parseTextViewWithAI);
-      await delay(1000);
+      await stepFunction(this.page, this.parseTextViewWithAI.bind(this));
+      await this.delay(1000);
 
       // Take screenshot after step execution
       try {
-        const screenshot = await page.screenshot({
+        const screenshot = await this.page.screenshot({
           encoding: 'base64',
           type: 'jpeg',
-          quality: 80 // Adjust quality to balance size and quality
+          quality: 80
         });
         
-        // Add screenshot to the step data
-        automationSteps[i].screenshot = `data:image/jpeg;base64,${screenshot}`;
+        this.automationSteps[stepIndex].screenshot = `data:image/jpeg;base64,${screenshot}`;
       } catch (screenshotError) {
         console.error('Failed to capture screenshot:', screenshotError);
-        automationSteps[i].screenshot = null;
+        this.automationSteps[stepIndex].screenshot = null;
       }
+
+      const updatedSteps = this.automationSteps.map(step => ({
+        instructions: step.instructions,
+        code: step.code,
+        extractedData: step.extractedData,
+        screenshot: step.screenshot
+      }));
+
+      return { 
+        success: true, 
+        lastExecutedStep: this.lastExecutedStepIndex,
+        steps: updatedSteps
+      };
+    } catch (error) {
+      console.error('Step execution failed:', error);
+      return { success: false, error: error.message };
     }
-
-    const updatedSteps = automationSteps.map(step => ({
-      instructions: step.instructions,
-      code: step.code,
-      extractedData: step.extractedData,
-      screenshot: step.screenshot
-    }));
-
-    return { 
-      success: true, 
-      lastExecutedStep: lastExecutedStepIndex,
-      steps: updatedSteps
-    };
-  } catch (error) {
-    console.error('Automation failed:', error);
-    return { success: false, error: error.message };
   }
 }
 
-async function clearSteps() {
-  automationSteps = [];
-  lastExecutedStepIndex = -1;
-  return { success: true };
-}
-
-async function resetExecution() {
-  lastExecutedStepIndex = -1;
-  return { success: true };
-}
-
-async function closeBrowser() {
-  if (browser) {
-    await browser.close();
-    browser = null;
-    page = null;
-  }
-  return { success: true };
-}
-
-
-
-module.exports = {
-  addAutomationStep,
-  executeCurrentSteps,
-  clearSteps,
-  closeBrowser,
-  resetExecution
-}; 
+module.exports = AutomationFlow; 
