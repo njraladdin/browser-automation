@@ -66,6 +66,8 @@ create profile, so flows are connected to each user profile (for simplciity, use
 
 
 add your own gemini key to the project 
+be able to edit instructinos and redo a step 
+be bale to delete a step 
 
 run each benchmark, troubleshoot and improve 
 

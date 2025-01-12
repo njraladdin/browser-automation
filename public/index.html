@@ -38,14 +38,36 @@
     </div>
   </div>
 
+  <div id="apiKeyModal" class="modal">
+    <div class="modal-content">
+      <h2>Gemini API Key Settings</h2>
+      <p class="api-key-info">Enter your Gemini API key to enable AI automation features</p>
+      <div class="form-group">
+        <input type="text" id="apiKey" placeholder="Enter Gemini API key..." />
+        <small class="help-text">Get your API key from <a href="https://makersuite.google.com/app/apikey" target="_blank">Google AI Studio</a></small>
+      </div>
+      <div class="modal-buttons">
+        <button onclick="saveApiKey()" class="btn btn-primary">Save</button>
+        <button onclick="closeApiKeyModal()" class="btn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <div class="header">
     <div class="header-main">
-      <div class="header-title">
+      <div class="header-left">
         <h1>Web Automation Builder</h1>
+        <div class="profile-info">
+          <span id="currentProfile"></span>
+          <button onclick="logOut()" class="btn btn-logout">Log out</button>
+        </div>
       </div>
-      <div class="profile-section">
-        <span id="currentProfile"></span>
-        <button onclick="logOut()" class="btn btn-logout">Log Out</button>
+      <div class="header-right">
+        <button onclick="showApiKeyModal()" class="btn btn-settings" title="API Settings">
+          <div id="apiKeyTooltip" class="tooltip-bubble">Please set your Gemini API key</div>
+          API Key
+          <span id="apiKeyNotification" class="notification-dot" style="display: none"></span>
+        </button>
       </div>
     </div>
     <div class="header-flow">
@@ -590,12 +612,82 @@
       }
     }
 
-    function setCurrentProfile(username, profileId) {
+    async function setCurrentProfile(username, profileId) {
       currentUsername = username;
       currentProfileId = profileId;
       localStorage.setItem('automationUsername', username);
       localStorage.setItem('automationProfileId', profileId);
       document.getElementById('currentProfile').textContent = `Profile: ${username}`;
+      
+      // Just check API key status without showing modal
+      await checkApiKey();
+    }
+
+    function showApiKeyModal() {
+      const modal = document.getElementById('apiKeyModal');
+      // Pre-fill existing API key if available
+      fetch(`/profiles/${currentUsername}/api-key`)
+        .then(response => response.json())
+        .then(data => {
+          if (data.gemini_api_key) {
+            document.getElementById('apiKey').value = data.gemini_api_key;
+          }
+        });
+      modal.style.display = 'block';
+    }
+
+    function closeApiKeyModal() {
+      document.getElementById('apiKeyModal').style.display = 'none';
+    }
+
+    async function saveApiKey() {
+      const apiKey = document.getElementById('apiKey').value.trim();
+      
+      if (!apiKey) {
+        showStatus('API key is required', 'error');
+        return;
+      }
+      
+      try {
+        const response = await fetch(`/profiles/${currentUsername}/api-key`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiKey })
+        });
+        
+        if (response.ok) {
+          document.getElementById('apiKeyNotification').style.display = 'none';
+          document.getElementById('apiKeyTooltip').classList.remove('visible');
+          showStatus('API key saved successfully');
+          closeApiKeyModal();
+        } else {
+          showStatus('Failed to save API key', 'error');
+        }
+      } catch (error) {
+        showStatus('Failed to save API key', 'error');
+      }
+    }
+
+    async function checkApiKey() {
+      try {
+        const response = await fetch(`/profiles/${currentUsername}/api-key`);
+        const data = await response.json();
+        const notification = document.getElementById('apiKeyNotification');
+        const tooltipBubble = document.getElementById('apiKeyTooltip');
+        
+        if (!data.gemini_api_key) {
+          notification.style.display = 'block';
+          tooltipBubble.classList.add('visible');
+         // showStatus('Please set your API key to use automation features', 'error');
+        } else {
+          notification.style.display = 'none';
+          tooltipBubble.classList.remove('visible');
+        }
+        return !!data.gemini_api_key;
+      } catch (error) {
+        console.error('Error checking API key:', error);
+        return false;
+      }
     }
   </script>
 

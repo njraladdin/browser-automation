@@ -249,6 +249,45 @@ app.get('/profiles/:username', async (req, res) => {
   }
 });
 
+// Add API key management endpoints
+app.get('/profiles/:username/api-key', async (req, res) => {
+  try {
+    const { username } = req.params;
+    const profile = await flowManager.db.get(
+      'SELECT gemini_api_key FROM profiles WHERE profile_username = ?',
+      [username]
+    );
+    
+    if (profile) {
+      res.json({ gemini_api_key: profile.gemini_api_key });
+    } else {
+      res.status(404).json({ error: 'Profile not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/profiles/:username/api-key', async (req, res) => {
+  try {
+    const { username } = req.params;
+    const { apiKey } = req.body;
+    
+    if (!apiKey) {
+      return res.status(400).json({ error: 'API key is required' });
+    }
+
+    await flowManager.db.run(
+      'UPDATE profiles SET gemini_api_key = ? WHERE profile_username = ?',
+      [apiKey, username]
+    );
+    
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 server.listen(3000, () => {
   console.log('Server running on port 3000');
 }); 

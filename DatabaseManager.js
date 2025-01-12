@@ -14,6 +14,7 @@ class DatabaseManager {
         CREATE TABLE IF NOT EXISTS profiles (
           profile_id TEXT PRIMARY KEY,
           profile_username TEXT UNIQUE NOT NULL,
+          gemini_api_key TEXT,
           created_at TEXT NOT NULL
         )
       `);
