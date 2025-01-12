@@ -105,7 +105,16 @@ app.post('/flows/:flowId/execute', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Flow not found' });
     }
 
+    // Set up status emitter
+    flow.automationFlowInstance.statusCallback = (status) => {
+      emitFlowStatus(flowId, status);
+    };
+
     const result = await flow.automationFlowInstance.executeCurrentSteps();
+    
+    // Clear the callback
+    flow.automationFlowInstance.statusCallback = null;
+    
     res.json(result);
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -139,8 +148,8 @@ app.post('/flows/:flowId/reset', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Flow not found' });
     }
 
-    await flow.automationFlowInstance.resetExecution();
-    res.json({ success: true });
+    const result = await flow.automationFlowInstance.resetExecution();
+    res.json(result);
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }

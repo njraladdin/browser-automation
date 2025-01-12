@@ -13,9 +13,10 @@ class AutomationFlow {
     this.browser = null;
     this.page = null;
     this.automationSteps = [];
-    this.lastExecutedStepIndex = -1;
+    this.lastExecutedStep = -1;
     this.INITIAL_URL = 'https://airbnb.com/';
     this.browserInitializing = null;
+    this.statusCallback = null;
   }
 
   async delay(ms) {
@@ -162,6 +163,7 @@ try {
   console.error('Failed to extract data:', error);
   throw error;
 }
+
 IMPORTANT: if you need to do any sorts of extraction of data, you need to use the given function like the example above. you jsut give which data you want in the prop and the function would take care of the rest. do not try to use querySelectorAll or anything like that.
 Current Page URL: ${snapshot.url}
 -you can use the given interactive elements map where you are provided each element on the page and it's selector so you can interact with them. Use the selectors exactly as they appear in the 'selector' field (in format __SELECTOR__N). DO NOT MODIFY THE SELECTORS. use the interactive map as a guide.
@@ -172,6 +174,7 @@ ${JSON.stringify(snapshot.interactive, null, 2)}
 Previous automation steps:
 ${previousSteps ? `Previous automation steps:
 ${previousSteps}` : ''}
+  DO NOT EVER USE SELECTORS THAT ARE NO PROVIDED TO YOU; EVER. only use the selectors provided to you in the interactive map. the selectorsi n the preivous steps examples were replaced and are not accurate, do not use them you fucking retard fucking pig idiot. 
 
 User Instructions: ${instructions}`;
 
@@ -185,7 +188,7 @@ User Instructions: ${instructions}`;
       const model = genAI.getGenerativeModel({
         model: "gemini-2.0-flash-exp",
         generationConfig: {
-          temperature: 0.7,
+          temperature: 0.6,
           topP: 0.95,
           topK: 40,
           maxOutputTokens: 8192,
@@ -318,14 +321,14 @@ User Instructions: ${instructions}`;
       // Parse the response and update the current step
       try {
         const extractedData = JSON.parse(parsedText);
-        if (this.lastExecutedStepIndex < this.automationSteps.length) {
-          this.automationSteps[this.lastExecutedStepIndex].extractedData = extractedData;
+        if (this.lastExecutedStep < this.automationSteps.length) {
+          this.automationSteps[this.lastExecutedStep].extractedData = extractedData;
         }
         return extractedData;
       } catch (e) {
         console.warn('Warning: AI response was not valid JSON, returning raw text');
-        if (this.lastExecutedStepIndex < this.automationSteps.length) {
-          this.automationSteps[this.lastExecutedStepIndex].extractedData = parsedText;
+        if (this.lastExecutedStep < this.automationSteps.length) {
+          this.automationSteps[this.lastExecutedStep].extractedData = parsedText;
         }
         return parsedText;
       }
@@ -339,17 +342,49 @@ User Instructions: ${instructions}`;
   async executeCurrentSteps() {
     try {
       console.log('[AutomationFlow] Starting execution of steps');
-      console.log('[AutomationFlow] Last executed step:', this.lastExecutedStepIndex);
+      console.log('[AutomationFlow] Last executed step:', this.lastExecutedStep);
       
-      const startIndex = this.lastExecutedStepIndex + 1;
+      const startIndex = (typeof this.lastExecutedStep === 'number' ? this.lastExecutedStep : -1) + 1;
       console.log('[AutomationFlow] Starting from index:', startIndex);
       
       for (let i = startIndex; i < this.automationSteps.length; i++) {
         console.log(`[AutomationFlow] Executing step ${i}:`);
-        const result = await this.executeSingleStep(i);
+        
+        const statusEmitter = (status) => {
+          if (this.statusCallback) {
+            this.statusCallback(status);
+          }
+        };
+
+        // Emit executing status
+        statusEmitter({
+          message: 'Executing step...',
+          type: 'executing',
+          stepIndex: i
+        });
+
+        const result = await this.executeSingleStep(i, statusEmitter);
         if (!result.success) {
+          statusEmitter({
+            message: result.error,
+            type: 'error',
+            stepIndex: i
+          });
           throw new Error(result.error);
         }
+
+        // Update lastExecutedStep after successful execution
+        this.lastExecutedStep = i;
+
+        // Emit success status
+        statusEmitter({
+          message: 'Step completed successfully',
+          type: 'success',
+          stepIndex: i
+        });
+
+        // Small delay between steps
+        await this.delay(500);
       }
 
       const updatedSteps = this.automationSteps.map(step => ({
@@ -359,11 +394,11 @@ User Instructions: ${instructions}`;
         screenshot: step.screenshot
       }));
 
-      console.log('[AutomationFlow] Execution completed.');
+      console.log('[AutomationFlow] Execution completed. Last executed step:', this.lastExecutedStep);
 
       return { 
         success: true, 
-        lastExecutedStep: this.lastExecutedStepIndex,
+        lastExecutedStep: this.lastExecutedStep,
         steps: updatedSteps
       };
     } catch (error) {
@@ -373,8 +408,33 @@ User Instructions: ${instructions}`;
   }
 
   async resetExecution() {
-    this.lastExecutedStepIndex = -1;
-    return { success: true };
+    try {
+      this.lastExecutedStep = -1;
+      
+      // Clear execution data from steps
+      this.automationSteps = this.automationSteps.map(step => ({
+        instructions: step.instructions,
+        code: step.code,
+        screenshot: null,
+        extractedData: null,
+        status: null
+      }));
+      
+      // Reset browser state if needed
+      if (this.browser) {
+        await this.browser.close();
+        this.browser = null;
+        this.page = null;
+      }
+      
+      return { 
+        success: true, 
+        steps: this.automationSteps 
+      };
+    } catch (error) {
+      console.error('Failed to reset execution:', error);
+      return { success: false, error: error.message };
+    }
   }
 
   async closeBrowser() {
@@ -388,30 +448,40 @@ User Instructions: ${instructions}`;
 
   async executeSingleStep(stepIndex, statusEmitter = () => {}) {
     try {
+      // Emit starting status
+      statusEmitter({ 
+        message: 'Starting step execution...', 
+        type: 'executing', 
+        stepIndex 
+      });
+
       if (!this.browser || !this.page) {
         statusEmitter({ message: 'Initializing browser...', type: 'info', stepIndex });
         try {
           await this.initBrowser();
         } catch (browserError) {
-          statusEmitter({ message: `Browser initialization failed: ${browserError.message}`, type: 'error', stepIndex 
+          statusEmitter({ 
+            message: `Browser initialization failed: ${browserError.message}`, 
+            type: 'error', 
+            stepIndex 
           });
           throw browserError;
         }
       }
 
       if (stepIndex < 0 || stepIndex >= this.automationSteps.length) {
-        statusEmitter({ 
-          message: 'Invalid step index', 
-          type: 'error', 
-          stepIndex 
-        });
         throw new Error('Invalid step index');
       }
 
-      statusEmitter({ message: `Executing automation code`, type: 'info', stepIndex });
       const step = this.automationSteps[stepIndex];
-      this.lastExecutedStepIndex = stepIndex;
+      this.lastExecutedStep = stepIndex;
       
+      statusEmitter({ 
+        message: 'Executing automation code...', 
+        type: 'executing', 
+        stepIndex 
+      });
+
       const stepFunction = new Function(
         'page', 
         'parseTextViewWithAI',
@@ -422,19 +492,22 @@ User Instructions: ${instructions}`;
 
       try {
         await stepFunction(this.page, this.parseTextViewWithAI.bind(this));
+        statusEmitter({ 
+          message: 'Step executed successfully', 
+          type: 'success', 
+          stepIndex 
+        });
       } catch (executionError) {
         statusEmitter({ 
-          message: `Automation code failed: ${executionError.message}`, 
+          message: `Failed: ${executionError.message}`, 
           type: 'error', 
           stepIndex 
         });
         throw executionError;
       }
 
-      statusEmitter({ message: 'Waiting for page to settle...', type: 'info', stepIndex });
       await this.delay(1000);
 
-      // Take screenshot after step execution
       try {
         statusEmitter({ message: 'Capturing screenshot...', type: 'info', stepIndex });
         const screenshot = await this.page.screenshot({
@@ -442,19 +515,10 @@ User Instructions: ${instructions}`;
           type: 'jpeg',
           quality: 80
         });
-        
         this.automationSteps[stepIndex].screenshot = `data:image/jpeg;base64,${screenshot}`;
       } catch (screenshotError) {
-        statusEmitter({ 
-          message: `Failed to capture screenshot: ${screenshotError.message}`, 
-          type: 'warning', 
-          stepIndex 
-        });
         console.error('Failed to capture screenshot:', screenshotError);
-        this.automationSteps[stepIndex].screenshot = null;
       }
-
-      statusEmitter({ message: 'Step completed successfully', type: 'success', stepIndex });
 
       const updatedSteps = this.automationSteps.map(step => ({
         instructions: step.instructions,
@@ -465,11 +529,10 @@ User Instructions: ${instructions}`;
 
       return { 
         success: true, 
-        lastExecutedStep: this.lastExecutedStepIndex,
+        lastExecutedStep: this.lastExecutedStep,
         steps: updatedSteps
       };
     } catch (error) {
-      statusEmitter({ message: `Error: ${error.message}`, type: 'error', stepIndex });
       console.error('Step execution failed:', error);
       return { success: false, error: error.message };
     }

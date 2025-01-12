@@ -83,7 +83,7 @@
         </div>
         <div class="automation-controls">
           <button onclick="executeSteps()" class="btn btn-play" id="playButton" disabled>
-            <span class="play-icon">▶</span> Play All Steps
+            <span class="play-icon">▶</span> <span class="btn-text">Play All Steps</span>
           </button>
           <button onclick="resetExecution()" class="btn btn-secondary" disabled>Reset Progress</button>
         </div>
@@ -165,7 +165,6 @@
       const stepsList = document.getElementById('stepsList');
       const playButton = document.getElementById('playButton');
       
-      // If no flow is selected, show message instead of steps
       if (!currentFlowId) {
         stepsList.innerHTML = `
           <div class="no-flow-message">
@@ -177,22 +176,16 @@
       
       playButton.disabled = steps.length === 0;
       
-      const buttonText = lastExecutedStep >= 0 ? '▶ Continue All Steps' : '▶ Play All Steps';
-      const playButtonSpan = playButton.querySelector('.play-icon');
-      if (playButtonSpan) {
-        playButton.innerHTML = `<span class="play-icon">▶</span> ${buttonText.replace('▶ ', '')}`;
-      } else {
-        playButton.textContent = buttonText;
-      }
+      // Update play button text
+      const buttonText = lastExecutedStep >= 0 ? 'Continue All Steps' : 'Play All Steps';
+      playButton.innerHTML = `<span class="play-icon">▶</span> ${buttonText}`;
       
       const stepsHtml = steps.map((step, index) => `
         <div class="step-block ${index <= lastExecutedStep ? 'executed' : ''}" id="step-${index + 1}">
           <div class="step-header">
             <div class="step-number">${index + 1}</div>
-            ${step.status?.message ? `
-              <div class="step-status ${step.status?.type || ''}" id="step-status-${index}">
-                ${step.status.message}
-              </div>
+            ${step.status ? `
+              <div class="step-status ${step.status.type || ''}">${step.status.message || ''}</div>
             ` : ''}
           </div>
           
@@ -212,40 +205,42 @@
             </div>
           </div>
 
-          <div class="step-details">
-            ${step.code ? `
-              <div class="code-block">
-                <div class="code-block-header" onclick="toggleCodeBlock(this)">
-                  <span><span class="icon">🤖</span> Generated Code</span>
-                  <span class="toggle-icon"></span>
+          ${step.screenshot || step.extractedData || step.code ? `
+            <div class="step-details">
+              ${step.code ? `
+                <div class="code-block">
+                  <div class="code-block-header" onclick="toggleCodeBlock(this)">
+                    <span><span class="icon">🤖</span> Generated Code</span>
+                    <span class="toggle-icon"></span>
+                  </div>
+                  <pre class="code-content">${step.code}</pre>
                 </div>
-                <pre class="code-content">${step.code}</pre>
-              </div>
-            ` : ''}
-            
-            ${step.extractedData ? `
-              <div class="data-block">
-                <div class="data-block-header" onclick="toggleDataBlock(this)">
-                  <span><span class="icon">📊</span> Extracted Data</span>
-                  <span class="toggle-icon"></span>
+              ` : ''}
+              
+              ${step.extractedData ? `
+                <div class="data-block">
+                  <div class="data-block-header" onclick="toggleDataBlock(this)">
+                    <span><span class="icon">📊</span> Extracted Data</span>
+                    <span class="toggle-icon"></span>
+                  </div>
+                  <pre class="data-content">${typeof step.extractedData === 'string' 
+                    ? step.extractedData 
+                    : JSON.stringify(step.extractedData, null, 2)}</pre>
                 </div>
-                <pre class="data-content">${typeof step.extractedData === 'string' 
-                  ? step.extractedData 
-                  : JSON.stringify(step.extractedData, null, 2)}</pre>
-              </div>
-            ` : ''}
-            
-            ${step.screenshot ? `
-              <div class="screenshot-block">
-                <div class="screenshot-header">
-                  <span><span class="icon">📸</span> Result Screenshot</span>
+              ` : ''}
+              
+              ${step.screenshot ? `
+                <div class="screenshot-block">
+                  <div class="screenshot-header">
+                    <span><span class="icon">📸</span> Result Screenshot</span>
+                  </div>
+                  <div class="screenshot-content">
+                    <img src="${step.screenshot}" alt="Step ${index + 1} result" />
+                  </div>
                 </div>
-                <div class="screenshot-content">
-                  <img src="${step.screenshot}" alt="Step ${index + 1} result" />
-                </div>
-              </div>
-            ` : ''}
-          </div>
+              ` : ''}
+            </div>
+          ` : ''}
         </div>
       `).join('');
 
@@ -294,50 +289,41 @@
         return;
       }
       console.log('[Frontend] Executing steps for flow:', currentFlowId);
-  console.log('[Frontend] Current steps:', steps);
 
       const playButton = document.getElementById('playButton');
-      playButton.disabled = true;
-      playButton.querySelector('.btn-text').textContent = '⏳ Running...';
-      
-      // Find the first unexecuted step
-      const nextStepIndex = lastExecutedStep + 1;
-      const nextStep = document.querySelector(`#step-${nextStepIndex + 1}`);
-      if (nextStep) {
-        nextStep.classList.add('executing');
-      }
       
       try {
+        playButton.disabled = true;
+        playButton.innerHTML = `<span class="play-icon">▶</span> Running...`;
+        
         const response = await fetch(`/flows/${currentFlowId}/execute`, {
           method: 'POST'
         });
         
+        if (!response.ok) {
+          throw new Error(`Server returned ${response.status}`);
+        }
+        
         const data = await response.json();
         if (data.success) {
           console.log('Received steps from server:', data.steps);
-          lastExecutedStep = data.lastExecutedStep;
           steps = data.steps;
+          lastExecutedStep = data.lastExecutedStep;
           updateStepsList();
           showStatus('Steps executed successfully!');
           
+          // Only disable if we've executed all steps
           playButton.disabled = lastExecutedStep >= steps.length - 1;
         } else {
-          showStatus(`Error: ${data.error}`, 'error');
-          playButton.disabled = false;
+          throw new Error(data.error);
         }
       } catch (error) {
         showStatus(`Error: ${error.message}`, 'error');
         playButton.disabled = false;
       } finally {
-        // Update button text based on execution state when done
-        const buttonText = lastExecutedStep >= 0 ? '▶ Continue All Steps' : '▶ Play All Steps';
-        playButton.querySelector('.btn-text').textContent = buttonText;
-        
-        // Remove executing class
-        const executingStep = document.querySelector('.executing');
-        if (executingStep) {
-          executingStep.classList.remove('executing');
-        }
+        const buttonText = lastExecutedStep >= 0 && lastExecutedStep < steps.length - 1 ? 
+          'Continue All Steps' : 'Play All Steps';
+        playButton.innerHTML = `<span class="play-icon">▶</span> ${buttonText}`;
       }
     }
 
@@ -352,17 +338,35 @@
         return;
       }
 
-      const status = document.getElementById('status');
       const playButton = document.getElementById('playButton');
       
       try {
-        await fetch(`/flows/${currentFlowId}/reset`, { method: 'POST' });
+        const response = await fetch(`/flows/${currentFlowId}/reset`, { method: 'POST' });
+        if (!response.ok) {
+          throw new Error(`Server returned ${response.status}`);
+        }
+        
+        // Reset local execution state
         lastExecutedStep = -1;
+        
+        // Clear screenshots and execution state from steps
+        steps = steps.map(step => ({
+          ...step,
+          screenshot: null,
+          extractedData: null,
+          status: null
+        }));
+        
+        // Update UI
         updateStepsList();
-        status.textContent = 'Execution reset to beginning';
-        playButton.disabled = false;
+        showStatus('Execution progress reset');
+        
+        // Enable play button and update its text
+        playButton.disabled = steps.length === 0;
+        playButton.innerHTML = '<span class="play-icon">▶</span> Play All Steps';
+        
       } catch (error) {
-        status.textContent = `Error: ${error.message}`;
+        showStatus(`Error: ${error.message}`, 'error');
       }
     }
 
@@ -571,12 +575,35 @@
       
       socket.on('flow-status', (status) => {
         console.log('[Socket] Received status:', status);
-        const statusElement = document.getElementById(`step-status-${status.stepIndex}`);
-        if (statusElement) {
+        
+        // Update step UI based on status
+        const stepBlock = document.querySelector(`#step-${status.stepIndex + 1}`);
+        if (stepBlock) {
+          // Remove any existing status classes
+          stepBlock.classList.remove('executing', 'success', 'error');
+          
+          // Add appropriate class based on status type
+          if (status.type === 'executing') {
+            stepBlock.classList.add('executing');
+          } else if (status.type === 'success') {
+            stepBlock.classList.add('executed');
+            // Also update lastExecutedStep if step completed successfully
+            if (status.stepIndex > lastExecutedStep) {
+              lastExecutedStep = status.stepIndex;
+            }
+          } else if (status.type === 'error') {
+            stepBlock.classList.add('error');
+          }
+          
+          // Update or create status message
+          let statusElement = stepBlock.querySelector('.step-status');
+          if (!statusElement) {
+            statusElement = document.createElement('div');
+            statusElement.className = 'step-status';
+            stepBlock.querySelector('.step-header').appendChild(statusElement);
+          }
           statusElement.textContent = status.message;
           statusElement.className = `step-status ${status.type}`;
-        } else {
-          console.warn(`[Socket] Status element not found for step ${status.stepIndex}`);
         }
       });
       
