@@ -330,10 +330,14 @@ User Instructions: ${instructions}`;
 
   async executeCurrentSteps() {
     try {
-      console.log('Executing automation steps...');
+      console.log('[AutomationFlow] Starting execution of steps');
+      console.log('[AutomationFlow] Last executed step:', this.lastExecutedStepIndex);
+      
       const startIndex = this.lastExecutedStepIndex + 1;
+      console.log('[AutomationFlow] Starting from index:', startIndex);
       
       for (let i = startIndex; i < this.automationSteps.length; i++) {
+        console.log(`[AutomationFlow] Executing step ${i}:`);
         const result = await this.executeSingleStep(i);
         if (!result.success) {
           throw new Error(result.error);
@@ -347,13 +351,15 @@ User Instructions: ${instructions}`;
         screenshot: step.screenshot
       }));
 
+      console.log('[AutomationFlow] Execution completed.');
+
       return { 
         success: true, 
         lastExecutedStep: this.lastExecutedStepIndex,
         steps: updatedSteps
       };
     } catch (error) {
-      console.error('Automation failed:', error);
+      console.error('[AutomationFlow] Execution failed:', error);
       return { success: false, error: error.message };
     }
   }
@@ -382,13 +388,8 @@ User Instructions: ${instructions}`;
         throw new Error('Invalid step index');
       }
 
-      // Verify step can be executed
-      if (stepIndex > 0 && stepIndex !== this.lastExecutedStepIndex + 1) {
-        throw new Error('Can only execute first step or next sequential step');
-      }
-
-      console.log(`Executing step ${stepIndex + 1}: ${this.automationSteps[stepIndex].instructions}`);
-      
+      console.log(`Executing step ${stepIndex + 1}`)
+      console.log(this.automationSteps[stepIndex])
       const step = this.automationSteps[stepIndex];
       this.lastExecutedStepIndex = stepIndex;
       

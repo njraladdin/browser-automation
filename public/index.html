@@ -34,7 +34,7 @@
       </div>
     </div>
     <div class="header-right">
-      <button onclick="executeSteps()" class="btn btn-primary" id="playButton" disabled title="Run automation from where it left off">
+      <button onclick="executeSteps()" class="btn btn-play" id="playButton" disabled title="Run automation from where it left off">
         <span class="btn-text">▶ Play All Steps</span>
       </button>
       <button onclick="resetExecution()" class="btn" disabled>Reset Progress</button>
@@ -132,37 +132,37 @@
           <div class="step-content">
             <div class="step-main-content">
               <div class="step-number">${index + 1}</div>
-              <div style="flex: 1;">
+              <div class="step-input-container">
                 <input type="text" value="${step.instructions}" class="step-input" readonly />
                 ${step.code ? `
                   <div class="code-block">
                     <pre>${step.code}</pre>
                   </div>
                 ` : ''}
+                ${step.extractedData ? `
+                  <div class="data-block">
+                    <div class="data-block-header" onclick="toggleDataBlock(this)">
+                      <span>📊 Extracted Data</span>
+                      <span class="toggle-icon"></span>
+                    </div>
+                    <pre>${typeof step.extractedData === 'string' 
+                      ? step.extractedData 
+                      : JSON.stringify(step.extractedData, null, 2)}</pre>
+                  </div>
+                ` : ''}
               </div>
-              ${(index === 0 || index === lastExecutedStep + 1) ? `
-                <button onclick="executeStep(${index})" class="btn btn-primary">
-                  ▶ Play Step
-                </button>
-              ` : ''}
             </div>
-            <div class="step-thumbnail">
-              ${step.screenshot ? `
-                <img src="${step.screenshot}" alt="Step ${index + 1} result" />
-              ` : 'Screenshot pending...'}
+            <div class="step-interactive">
+              <button onclick="executeStep(${index})" class="btn btn-play" id="play-step-${index}">
+                ▶ Play Step
+              </button>
+              <div class="step-thumbnail">
+                ${step.screenshot ? `
+                  <img src="${step.screenshot}" alt="Step ${index + 1} result" />
+                ` : 'Result Screenshot'}
+              </div>
             </div>
           </div>
-          ${step.extractedData ? `
-            <div class="data-block">
-              <div class="data-block-header" onclick="toggleDataBlock(this)">
-                <span>📊 Extracted Data</span>
-                <span class="toggle-icon"></span>
-              </div>
-              <pre>${typeof step.extractedData === 'string' 
-                ? step.extractedData 
-                : JSON.stringify(step.extractedData, null, 2)}</pre>
-            </div>
-          ` : ''}
         </div>
       `).join('');
 
@@ -173,28 +173,29 @@
             <div class="step-main-content">
               <div class="step-number">${newStepNumber}</div>
               <div class="step-input-container">
-            
                 <input type="text" 
                   id="step-input-${newStepNumber}" 
                   placeholder="Go to website, click button, type text..."
                   class="step-input"
                   onkeypress="if(event.key === 'Enter') addStep(${newStepNumber})" />
+                ${newStepNumber === 1 ? `
+                  <div class="help-text">
+                    <p>💡 Examples of what you can type:</p>
+                    <ul>
+                      <li>"Go to wikipedia.org"</li>
+                      <li>"Type 'Hello' in the message field"</li>
+                      <li>"Click the Subscribe button"</li>
+                    </ul>
+                  </div>
+                ` : ''}
               </div>
+            </div>
+            <div class="step-interactive">
               <button onclick="addStep(${newStepNumber})" class="btn btn-primary">
-                Add
+                Add Step
               </button>
             </div>
           </div>
-          ${newStepNumber === 1 ? `
-            <div class="help-text">
-              <p>💡 Examples of what you can type:</p>
-              <ul>
-                <li>"Go to wikipedia.org"</li>
-                <li>"Type 'Hello' in the message field"</li>
-                <li>"Click the Subscribe button"</li>
-              </ul>
-            </div>
-          ` : ''}
         </div>
       `;
 
@@ -206,6 +207,8 @@
         showStatus('Please select a flow first', 'error');
         return;
       }
+      console.log('[Frontend] Executing steps for flow:', currentFlowId);
+  console.log('[Frontend] Current steps:', steps);
 
       const playButton = document.getElementById('playButton');
       playButton.disabled = true;
@@ -413,12 +416,11 @@
         showStatus('Please select a flow first', 'error');
         return;
       }
-
-      // Disable all play step buttons during execution
-      document.querySelectorAll('.step-block .btn-primary').forEach(btn => btn.disabled = true);
       
       const stepBlock = document.querySelector(`#step-${stepIndex + 1}`);
+      const playButton = document.querySelector(`#play-step-${stepIndex}`);
       stepBlock.classList.add('executing');
+      playButton.disabled = true;
       
       try {
         const response = await fetch(`/flows/${currentFlowId}/execute-step/${stepIndex}`, {
@@ -438,6 +440,7 @@
         showStatus(`Error: ${error.message}`, 'error');
       } finally {
         stepBlock.classList.remove('executing');
+        playButton.disabled = false;
       }
     }
   </script>

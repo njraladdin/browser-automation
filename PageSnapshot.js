@@ -530,12 +530,13 @@ if (require.main === module) {
   require('dotenv').config();
 
   (async () => {
+    let browser;
     try {
       const url = 'https://airbnb.com';
       console.log(`Testing PageSnapshot with URL: ${url}`);
 
       console.log('Launching browser...');
-      const browser = await puppeteer.launch({ 
+      browser = await puppeteer.launch({ 
         headless: false,
         defaultViewport: {
           width: 1280,
@@ -550,26 +551,19 @@ if (require.main === module) {
       console.log('Taking page snapshot...');
       const snapshot = new PageSnapshot();
       const result = await snapshot.captureSnapshot(page);
+      
       console.log('\nSnapshot captured successfully!');
-      // Test the new AI parsing function
-      console.log('\nTesting AI parsing...');
-      const structurePrompt = `Please extract the Airbnb listings information in JSON format. 
-
-`;
-
-      const parsedResult = await snapshot.parseTextViewWithAI(structurePrompt);
-      console.log('\nAI Parsing Result:', parsedResult);
-
-      console.log('\nSnapshot and parsing complete!');
       console.log('Files saved with timestamp:', result.timestamp);
       console.log('\nDebug files location:', path.join(__dirname, 'test'));
-
-      //await browser.close();
-      console.log('\nBrowser closed. Test complete!');
 
     } catch (error) {
       console.error('Test failed:', error);
       process.exit(1);
+    } finally {
+      if (browser) {
+        await browser.close();
+        console.log('\nBrowser closed. Test complete!');
+      }
     }
   })();
 } 

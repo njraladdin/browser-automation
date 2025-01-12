@@ -1,4 +1,4 @@
-const AutomationFlow = require('./automation');
+const AutomationFlow = require('./AutomationFlow');
 const DatabaseManager = require('./DatabaseManager');
 
 class FlowManager {
@@ -22,7 +22,7 @@ class FlowManager {
         name,
         description,
         createdAt,
-        automation: new AutomationFlow()
+        automationFlowInstance: new AutomationFlow()
       };
 
       this.activeFlows.set(flowId, flow);
@@ -35,8 +35,11 @@ class FlowManager {
 
   async getFlow(flowId) {
     try {
+      console.log(`[FlowManager] Getting flow ${flowId}`);
+      
       // Check if flow is already active
       if (this.activeFlows.has(flowId)) {
+        console.log('[FlowManager] Found flow in active flows');
         return this.activeFlows.get(flowId);
       }
 
@@ -46,29 +49,44 @@ class FlowManager {
         [flowId]
       );
 
-      if (!flow) return null;
+      if (!flow) {
+        console.log('[FlowManager] Flow not found in database');
+        return null;
+      }
 
       // Get steps for this flow
       const steps = await this.db.all(
         'SELECT * FROM steps WHERE flow_id = ? ORDER BY order_index',
         [flowId]
       );
+      
+      console.log('[FlowManager] Retrieved steps from database:');
 
       // Create new automation instance
-      const automation = new AutomationFlow();
+      const automationFlowInstance = new AutomationFlow();
+      
+      // Load steps into automation instance
+      for (const step of steps) {
+        console.log('[FlowManager] Loading step into automation:', step.instructions);
+        automationFlowInstance.automationSteps.push({
+          instructions: step.instructions,
+          code: step.code
+        });
+      }
       
       // Reconstruct the flow with its automation instance
       const activeFlow = {
         ...flow,
-        automation,
+        automationFlowInstance,
         steps
       };
 
       // Store in active flows
       this.activeFlows.set(flowId, activeFlow);
+      console.log('[FlowManager] Flow activated ');
       return activeFlow;
     } catch (error) {
-      console.error('Failed to get flow:', error);
+      console.error('[FlowManager] Failed to get flow:', error);
       throw error;
     }
   }
@@ -87,8 +105,8 @@ class FlowManager {
       // Clean up automation if active
       if (this.activeFlows.has(flowId)) {
         const flow = this.activeFlows.get(flowId);
-        if (flow.automation) {
-          await flow.automation.closeBrowser();
+        if (flow.automationFlowInstance) {
+          await flow.automationFlowInstance.closeBrowser();
         }
         this.activeFlows.delete(flowId);
       }

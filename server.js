@@ -1,6 +1,6 @@
 const express = require('express');
 const path = require('path');
-const AutomationFlow = require('./automation');
+const AutomationFlow = require('./AutomationFlow');
 const FlowManager = require('./FlowManager');
 
 const app = express();
@@ -61,7 +61,7 @@ app.post('/flows/:flowId/step', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Flow not found' });
     }
 
-    const result = await flow.automation.addAutomationStep(instructions);
+    const result = await flow.automationFlowInstance.addAutomationStep(instructions);
     if (result.success) {
       await flowManager.addStepToFlow(flowId, instructions, result.code);
     }
@@ -72,15 +72,19 @@ app.post('/flows/:flowId/step', async (req, res) => {
 });
 
 app.post('/flows/:flowId/execute', async (req, res) => {
-  const { flowId } = req.params;
-  const flow = flowManager.getFlow(flowId);
-  
-  if (!flow) {
-    return res.status(404).json({ success: false, error: 'Flow not found' });
-  }
+  try {
+    const { flowId } = req.params;
+    const flow = await flowManager.getFlow(flowId);
+    
+    if (!flow) {
+      return res.status(404).json({ success: false, error: 'Flow not found' });
+    }
 
-  const result = await flow.automation.executeCurrentSteps();
-  res.json(result);
+    const result = await flow.automationFlowInstance.executeCurrentSteps();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 // Clear all steps
@@ -110,7 +114,7 @@ app.post('/flows/:flowId/reset', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Flow not found' });
     }
 
-    await flow.automation.resetExecution();
+    await flow.automationFlowInstance.resetExecution();
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -126,7 +130,7 @@ app.post('/flows/:flowId/execute-step/:stepIndex', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Flow not found' });
     }
 
-    const result = await flow.automation.executeSingleStep(parseInt(stepIndex));
+    const result = await flow.automationFlowInstance.executeSingleStep(parseInt(stepIndex));
     res.json(result);
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });

@@ -57,12 +57,12 @@ make the AI be able to detect that ishoudl use the function and use it in case o
 display extracted data in frontend, done 
 AI shoudl have acess to extracted data (number, first item and last item), done 
 keep screenshot preview of the page in frontend and send it after each step, done 
+you can create and save flows, done 
+you can play a single step, done 
 
-you can create and save flows
-
-you can play a single step 
 
 make step UI conssitent before and after adding (same layout)
+delete a step 
 
 run websocket server to easily track what's happening in the backend (to easily debug what's going on evne when backend is deployed).
 
