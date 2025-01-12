@@ -2,8 +2,12 @@ const express = require('express');
 const path = require('path');
 const AutomationFlow = require('./AutomationFlow');
 const FlowManager = require('./FlowManager');
+const http = require('http');
+const socketIO = require('socket.io');
 
 const app = express();
+const server = http.createServer(app);
+const io = socketIO(server);
 const flowManager = new FlowManager();
 
 app.use(express.json());
@@ -58,15 +62,31 @@ app.post('/flows/:flowId/step', async (req, res) => {
     const flow = await flowManager.getFlow(flowId);
     
     if (!flow) {
+      emitFlowStatus(flowId, { 
+        message: 'Flow not found', 
+        type: 'error',
+        stepIndex: flow?.automationFlowInstance?.automationSteps?.length || 0
+      });
       return res.status(404).json({ success: false, error: 'Flow not found' });
     }
 
     const result = await flow.automationFlowInstance.addAutomationStep(instructions);
     if (result.success) {
       await flowManager.addStepToFlow(flowId, instructions, result.code);
+    } else {
+      emitFlowStatus(flowId, { 
+        message: `Failed to add step: ${result.error}`, 
+        type: 'error',
+        stepIndex: flow.automationFlowInstance.automationSteps.length
+      });
     }
     res.json(result);
   } catch (error) {
+    emitFlowStatus(req.params.flowId, { 
+      message: `Server error: ${error.message}`, 
+      type: 'error',
+      stepIndex: -1
+    });
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -121,22 +141,60 @@ app.post('/flows/:flowId/reset', async (req, res) => {
   }
 });
 
+// Socket.IO connection handling
+io.on('connection', (socket) => {
+  console.log('Client connected');
+  
+  socket.on('join-flow', (flowId) => {
+    // Leave previous flow room if any
+    Object.keys(socket.rooms).forEach(room => {
+      if (room !== socket.id) socket.leave(room);
+    });
+    
+    // Join new flow room
+    socket.join(`flow-${flowId}`);
+    console.log(`Client joined flow-${flowId}`);
+  });
+  
+  socket.on('disconnect', () => {
+    console.log('Client disconnected');
+  });
+});
+
+// Add this helper function to emit status updates
+function emitFlowStatus(flowId, status) {
+  console.log(`Emitting status for flow ${flowId}:`, status);
+  io.to(`flow-${flowId}`).emit('flow-status', status);
+}
+
+// Update the execute-step endpoint to use status updates
 app.post('/flows/:flowId/execute-step/:stepIndex', async (req, res) => {
   try {
     const { flowId, stepIndex } = req.params;
     const flow = await flowManager.getFlow(flowId);
     
     if (!flow) {
+      emitFlowStatus(flowId, { 
+        message: 'Flow not found', 
+        type: 'error',
+        stepIndex: parseInt(stepIndex)
+      });
       return res.status(404).json({ success: false, error: 'Flow not found' });
     }
 
-    const result = await flow.automationFlowInstance.executeSingleStep(parseInt(stepIndex));
+    const statusEmitter = (status) => emitFlowStatus(flowId, status);
+    const result = await flow.automationFlowInstance.executeSingleStep(parseInt(stepIndex), statusEmitter);
     res.json(result);
   } catch (error) {
+    emitFlowStatus(req.params.flowId, { 
+      message: `Server error: ${error.message}`, 
+      type: 'error',
+      stepIndex: parseInt(req.params.stepIndex)
+    });
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-app.listen(3000, () => {
+server.listen(3000, () => {
   console.log('Server running on port 3000');
 }); 

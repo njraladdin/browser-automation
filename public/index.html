@@ -3,6 +3,7 @@
 <head>
   <title>Web Automation Builder</title>
   <link href="/css/styles.css" rel="stylesheet">
+  <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
   <div id="flowModal" class="modal">
@@ -49,6 +50,7 @@
     let steps = [];
     let lastExecutedStep = -1;
     let currentFlowId = null;
+    let socket;
 
     // Initialize with first empty step
     window.onload = () => {
@@ -160,6 +162,9 @@
               <button onclick="executeStep(${index})" class="btn btn-play" id="play-step-${index}">
                 ▶ Play Step
               </button>
+              <div class="step-status ${step.status?.type || ''}" id="step-status-${index}">
+                ${step.status?.message || ''}
+              </div>
               <div class="step-thumbnail">
                 ${step.screenshot ? `
                   <img src="${step.screenshot}" alt="Step ${index + 1} result" />
@@ -378,10 +383,17 @@
         lastExecutedStep = -1;
         disableAutomationButtons();
         updateStepsList();
+        if (socket) {
+          socket.disconnect();
+        }
         return;
       }
       
       try {
+        // Initialize socket connection for this flow
+        initializeSocket();
+        socket.emit('join-flow', flowId);
+        
         const response = await fetch(`/flows/${flowId}/steps`);
         const flowSteps = await response.json();
         
@@ -391,7 +403,7 @@
         }));
         
         currentFlowId = flowId;
-        lastExecutedStep = -1; // Reset execution state for new flow
+        lastExecutedStep = -1;
         enableAutomationButtons();
         updateStepsList();
       } catch (error) {
@@ -451,6 +463,38 @@
     function toggleCodeBlock(header) {
       const codeBlock = header.parentElement;
       codeBlock.classList.toggle('collapsed');
+    }
+
+    function initializeSocket() {
+      if (socket) {
+        socket.disconnect();
+      }
+      
+      socket = io();
+      console.log('Socket initialized');
+      
+      socket.on('connect', () => {
+        console.log('Socket connected');
+      });
+      
+      socket.on('flow-status', (status) => {
+        console.log('Received status:', status);
+        const statusElement = document.getElementById(`step-status-${status.stepIndex}`);
+        if (statusElement) {
+          statusElement.textContent = status.message;
+          statusElement.className = `step-status ${status.type}`;
+        } else {
+          console.warn(`Status element not found for step ${status.stepIndex}`);
+        }
+      });
+      
+      socket.on('disconnect', () => {
+        console.log('Socket disconnected');
+      });
+      
+      socket.on('connect_error', (error) => {
+        console.error('Socket connection error:', error);
+      });
     }
   </script>
 

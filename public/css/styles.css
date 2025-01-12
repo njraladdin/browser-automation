@@ -567,3 +567,25 @@ body {
   border-color: #a98eda;
   cursor: not-allowed;
 }
+
+.step-status {
+  margin-top: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.step-status.info {
+  background-color: #e3f2fd;
+  color: #1976d2;
+}
+
+.step-status.success {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+}
+
+.step-status.error {
+  background-color: #ffebee;
+  color: #c62828;
+}

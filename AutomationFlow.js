@@ -44,7 +44,11 @@ class AutomationFlow {
         this.page = await this.browser.newPage();
         
         console.log('Navigating to initial URL...');
-        await this.page.goto(this.INITIAL_URL, { waitUntil: 'networkidle0' });
+        try {
+          await this.page.goto(this.INITIAL_URL, { waitUntil: 'networkidle0' });
+        } catch (navigationError) {
+          throw new Error(`Failed to load initial page: ${navigationError.message}`);
+        }
         
         return { browser: this.browser, page: this.page };
       } catch (error) {
@@ -382,18 +386,29 @@ User Instructions: ${instructions}`;
     return { success: true };
   }
 
-  async executeSingleStep(stepIndex) {
+  async executeSingleStep(stepIndex, statusEmitter = () => {}) {
     try {
       if (!this.browser || !this.page) {
-        await this.initBrowser();
+        statusEmitter({ message: 'Initializing browser...', type: 'info', stepIndex });
+        try {
+          await this.initBrowser();
+        } catch (browserError) {
+          statusEmitter({ message: `Browser initialization failed: ${browserError.message}`, type: 'error', stepIndex 
+          });
+          throw browserError;
+        }
       }
 
       if (stepIndex < 0 || stepIndex >= this.automationSteps.length) {
+        statusEmitter({ 
+          message: 'Invalid step index', 
+          type: 'error', 
+          stepIndex 
+        });
         throw new Error('Invalid step index');
       }
 
-      console.log(`Executing step ${stepIndex + 1}`)
-      console.log(this.automationSteps[stepIndex])
+      statusEmitter({ message: `Executing automation code`, type: 'info', stepIndex });
       const step = this.automationSteps[stepIndex];
       this.lastExecutedStepIndex = stepIndex;
       
@@ -405,11 +420,23 @@ User Instructions: ${instructions}`;
         })(page, parseTextViewWithAI)`
       );
 
-      await stepFunction(this.page, this.parseTextViewWithAI.bind(this));
+      try {
+        await stepFunction(this.page, this.parseTextViewWithAI.bind(this));
+      } catch (executionError) {
+        statusEmitter({ 
+          message: `Automation code failed: ${executionError.message}`, 
+          type: 'error', 
+          stepIndex 
+        });
+        throw executionError;
+      }
+
+      statusEmitter({ message: 'Waiting for page to settle...', type: 'info', stepIndex });
       await this.delay(1000);
 
       // Take screenshot after step execution
       try {
+        statusEmitter({ message: 'Capturing screenshot...', type: 'info', stepIndex });
         const screenshot = await this.page.screenshot({
           encoding: 'base64',
           type: 'jpeg',
@@ -418,9 +445,16 @@ User Instructions: ${instructions}`;
         
         this.automationSteps[stepIndex].screenshot = `data:image/jpeg;base64,${screenshot}`;
       } catch (screenshotError) {
+        statusEmitter({ 
+          message: `Failed to capture screenshot: ${screenshotError.message}`, 
+          type: 'warning', 
+          stepIndex 
+        });
         console.error('Failed to capture screenshot:', screenshotError);
         this.automationSteps[stepIndex].screenshot = null;
       }
+
+      statusEmitter({ message: 'Step completed successfully', type: 'success', stepIndex });
 
       const updatedSteps = this.automationSteps.map(step => ({
         instructions: step.instructions,
@@ -435,6 +469,7 @@ User Instructions: ${instructions}`;
         steps: updatedSteps
       };
     } catch (error) {
+      statusEmitter({ message: `Error: ${error.message}`, type: 'error', stepIndex });
       console.error('Step execution failed:', error);
       return { success: false, error: error.message };
     }
