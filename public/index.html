@@ -19,7 +19,7 @@
       </div>
       <div class="modal-buttons">
         <button onclick="createFlow()" class="btn btn-primary">Create</button>
-        <button onclick="closeFlowModal()" class="btn">Cancel</button>
+        <button onclick="closeFlowModal()" class="btn btn-secondary">Cancel</button>
       </div>
     </div>
   </div>
@@ -73,16 +73,19 @@
     <div class="header-flow">
       <div class="flow-controls">
         <div class="flow-selector">
-          <select id="flowSelect" onchange="selectFlow(this.value)">
+          <select id="flowSelect" 
+            onchange="console.log('[flowSelect] Value changed:', this.value); selectFlow(this.value)">
             <option value="">Select a flow...</option>
           </select>
-          <button onclick="showFlowModal()" class="btn btn-primary">New Flow</button>
+          <button onclick="showFlowModal()" class="btn btn-primary">
+            <span class="add-icon">+</span> New Flow
+          </button>
         </div>
         <div class="automation-controls">
-          <button onclick="executeSteps()" class="btn btn-play" id="playButton" disabled title="Run automation from where it left off">
-            <span class="btn-text">▶ Play All Steps</span>
+          <button onclick="executeSteps()" class="btn btn-play" id="playButton" disabled>
+            <span class="play-icon">▶</span> Play All Steps
           </button>
-          <button onclick="resetExecution()" class="btn" disabled>Reset Progress</button>
+          <button onclick="resetExecution()" class="btn btn-secondary" disabled>Reset Progress</button>
         </div>
       </div>
     </div>
@@ -175,81 +178,107 @@
       playButton.disabled = steps.length === 0;
       
       const buttonText = lastExecutedStep >= 0 ? '▶ Continue All Steps' : '▶ Play All Steps';
-      playButton.querySelector('.btn-text').textContent = buttonText;
+      const playButtonSpan = playButton.querySelector('.play-icon');
+      if (playButtonSpan) {
+        playButton.innerHTML = `<span class="play-icon">▶</span> ${buttonText.replace('▶ ', '')}`;
+      } else {
+        playButton.textContent = buttonText;
+      }
       
       const stepsHtml = steps.map((step, index) => `
         <div class="step-block ${index <= lastExecutedStep ? 'executed' : ''}" id="step-${index + 1}">
-          <div class="step-content">
-            <div class="step-main-content">
-              <div class="step-number">${index + 1}</div>
-              <div class="step-input-container">
-                <input type="text" value="${step.instructions}" class="step-input" readonly />
-                ${step.code ? `
-                  <div class="code-block">
-                    <div class="code-block-header" onclick="toggleCodeBlock(this)">
-                      <span>🤖 Automation Code</span>
-                      <span class="toggle-icon"></span>
-                    </div>
-                    <pre>${step.code}</pre>
-                  </div>
-                ` : ''}
-                ${step.extractedData ? `
-                  <div class="data-block">
-                    <div class="data-block-header" onclick="toggleDataBlock(this)">
-                      <span>📊 Extracted Data</span>
-                      <span class="toggle-icon"></span>
-                    </div>
-                    <pre>${typeof step.extractedData === 'string' 
-                      ? step.extractedData 
-                      : JSON.stringify(step.extractedData, null, 2)}</pre>
-                  </div>
-                ` : ''}
-              </div>
-            </div>
-            <div class="step-interactive">
-              <button onclick="executeStep(${index})" class="btn btn-play" id="play-step-${index}">
-                ▶ Play Step
-              </button>
+          <div class="step-header">
+            <div class="step-number">${index + 1}</div>
+            ${step.status?.message ? `
               <div class="step-status ${step.status?.type || ''}" id="step-status-${index}">
-                ${step.status?.message || ''}
+                ${step.status.message}
               </div>
-              <div class="step-thumbnail">
-                ${step.screenshot ? `
-                  <img src="${step.screenshot}" alt="Step ${index + 1} result" />
-                ` : 'Result Screenshot'}
-              </div>
+            ` : ''}
+          </div>
+          
+          <div class="step-content">
+            <div class="step-instruction">
+              <div class="instruction-label">Instruction:</div>
+              <input type="text" value="${step.instructions}" class="step-input" readonly />
             </div>
+            
+            <div class="step-actions">
+              <button onclick="executeStep(${index})" class="btn btn-play" id="play-step-${index}">
+                <span class="play-icon">▶</span> Run Step
+              </button>
+              <button onclick="deleteStep(${index})" class="btn btn-delete" title="Delete step">
+                <span class="delete-icon">🗑</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="step-details">
+            ${step.code ? `
+              <div class="code-block">
+                <div class="code-block-header" onclick="toggleCodeBlock(this)">
+                  <span><span class="icon">🤖</span> Generated Code</span>
+                  <span class="toggle-icon"></span>
+                </div>
+                <pre class="code-content">${step.code}</pre>
+              </div>
+            ` : ''}
+            
+            ${step.extractedData ? `
+              <div class="data-block">
+                <div class="data-block-header" onclick="toggleDataBlock(this)">
+                  <span><span class="icon">📊</span> Extracted Data</span>
+                  <span class="toggle-icon"></span>
+                </div>
+                <pre class="data-content">${typeof step.extractedData === 'string' 
+                  ? step.extractedData 
+                  : JSON.stringify(step.extractedData, null, 2)}</pre>
+              </div>
+            ` : ''}
+            
+            ${step.screenshot ? `
+              <div class="screenshot-block">
+                <div class="screenshot-header">
+                  <span><span class="icon">📸</span> Result Screenshot</span>
+                </div>
+                <div class="screenshot-content">
+                  <img src="${step.screenshot}" alt="Step ${index + 1} result" />
+                </div>
+              </div>
+            ` : ''}
           </div>
         </div>
       `).join('');
 
       const newStepNumber = steps.length + 1;
       const newStepHtml = `
-        <div class="step-block" id="step-${newStepNumber}">
+        <div class="step-block new-step" id="step-${newStepNumber}">
+          <div class="step-header">
+            <div class="step-number">${newStepNumber}</div>
+          </div>
+          
           <div class="step-content">
-            <div class="step-main-content">
-              <div class="step-number">${newStepNumber}</div>
-              <div class="step-input-container">
-                <input type="text" 
-                  id="step-input-${newStepNumber}" 
-                  placeholder="Go to website, click button, type text..."
-                  class="step-input"
-                  onkeypress="if(event.key === 'Enter') addStep(${newStepNumber})" />
-                ${newStepNumber === 1 ? `
-                  <div class="help-text">
-                    <p>💡 Examples of what you can type:</p>
-                    <ul>
-                      <li>"Go to wikipedia.org"</li>
-                      <li>"Type 'Hello' in the message field"</li>
-                      <li>"Click the Subscribe button"</li>
-                    </ul>
-                  </div>
-                ` : ''}
-              </div>
+            <div class="step-instruction">
+              <div class="instruction-label">New Instruction:</div>
+              <input type="text" 
+                id="step-input-${newStepNumber}" 
+                placeholder="Go to website, click button, type text..."
+                class="step-input"
+                onkeypress="if(event.key === 'Enter') addStep(${newStepNumber})" />
+              ${newStepNumber === 1 ? `
+                <div class="help-text">
+                  <p>💡 Examples of what you can type:</p>
+                  <ul>
+                    <li>"Go to wikipedia.org"</li>
+                    <li>"Type 'Hello' in the message field"</li>
+                    <li>"Click the Subscribe button"</li>
+                  </ul>
+                </div>
+              ` : ''}
             </div>
-            <div class="step-interactive">
+            
+            <div class="step-actions">
               <button onclick="addStep(${newStepNumber})" class="btn btn-primary">
-                Add Step
+                <span class="add-icon">+</span> Add Step
               </button>
             </div>
           </div>
@@ -434,7 +463,10 @@
     }
 
     async function selectFlow(flowId) {
+      console.log('[selectFlow] Starting with flowId:', flowId);
+      
       if (!flowId) {
+        console.log('[selectFlow] No flowId provided, resetting state');
         currentFlowId = null;
         steps = [];
         lastExecutedStep = -1;
@@ -447,22 +479,30 @@
       }
       
       try {
+        console.log('[selectFlow] Initializing socket');
         initializeSocket();
         socket.emit('join-flow', flowId);
         
+        console.log('[selectFlow] Fetching steps for flow:', flowId);
         const response = await fetch(`/flows/${flowId}/steps`);
+        console.log('[selectFlow] Response status:', response.status);
+        
         const flowSteps = await response.json();
+        console.log('[selectFlow] Received steps:', flowSteps);
         
         steps = flowSteps.map(step => ({
           instructions: step.instructions,
           code: step.code
         }));
+        console.log('[selectFlow] Processed steps:', steps);
         
         currentFlowId = flowId;
         lastExecutedStep = -1;
         enableAutomationButtons();
         updateStepsList();
+        console.log('[selectFlow] Flow selection completed successfully');
       } catch (error) {
+        console.error('[selectFlow] Error:', error);
         showStatus('Failed to load flow steps', 'error');
       }
     }
@@ -516,34 +556,36 @@
     }
 
     function initializeSocket() {
+      console.log('[initializeSocket] Starting socket initialization');
       if (socket) {
+        console.log('[initializeSocket] Disconnecting existing socket');
         socket.disconnect();
       }
       
       socket = io();
-      console.log('Socket initialized');
+      console.log('[initializeSocket] Socket created');
       
       socket.on('connect', () => {
-        console.log('Socket connected');
+        console.log('[Socket] Connected');
       });
       
       socket.on('flow-status', (status) => {
-        console.log('Received status:', status);
+        console.log('[Socket] Received status:', status);
         const statusElement = document.getElementById(`step-status-${status.stepIndex}`);
         if (statusElement) {
           statusElement.textContent = status.message;
           statusElement.className = `step-status ${status.type}`;
         } else {
-          console.warn(`Status element not found for step ${status.stepIndex}`);
+          console.warn(`[Socket] Status element not found for step ${status.stepIndex}`);
         }
       });
       
       socket.on('disconnect', () => {
-        console.log('Socket disconnected');
+        console.log('[Socket] Disconnected');
       });
       
       socket.on('connect_error', (error) => {
-        console.error('Socket connection error:', error);
+        console.error('[Socket] Connection error:', error);
       });
     }
 
@@ -687,6 +729,41 @@
       } catch (error) {
         console.error('Error checking API key:', error);
         return false;
+      }
+    }
+
+    async function deleteStep(stepIndex) {
+      if (!currentFlowId) {
+        showStatus('Please select a flow first', 'error');
+        return;
+      }
+
+      if (!confirm('Are you sure you want to delete this step?')) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`/flows/${currentFlowId}/step/${stepIndex}`, {
+          method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          // Remove step from local array
+          steps.splice(stepIndex, 1);
+          
+          // Reset execution state if we deleted a previously executed step
+          if (stepIndex <= lastExecutedStep) {
+            lastExecutedStep = stepIndex - 1;
+          }
+          
+          updateStepsList();
+          showStatus('Step deleted successfully!');
+        } else {
+          showStatus(`Error: ${data.error}`, 'error');
+        }
+      } catch (error) {
+        showStatus(`Error: ${error.message}`, 'error');
       }
     }
   </script>

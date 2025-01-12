@@ -86,8 +86,7 @@ body {
 .flow-controls {
   display: flex;
   justify-content: space-between;
-  align-items: stretch;
-
+  align-items: flex-end;
   gap: 24px;
 }
 
@@ -172,149 +171,419 @@ body {
 /* Buttons */
 .btn {
   padding: 8px 16px;
-  border: 1px solid #ddd;
-  background: #fff;
+  border-radius: 6px;
+  font-weight: 500;
+  font-size: 14px;
   cursor: pointer;
-  margin-left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+  height: 42px;
+  border: 1px solid transparent;
 }
 
+/* Primary button - Used for main actions like "New Flow", "Add Step" */
 .btn-primary {
   background: #0066cc;
   color: white;
   border-color: #0066cc;
-  align-self: flex-start;
-  flex-shrink: 0;
 }
 
-.btn:disabled {
-  opacity: 0.5;
+.btn-primary:hover {
+  background: #0052a3;
+  border-color: #0052a3;
+}
+
+.btn-primary:disabled {
+  background: #99c2e6;
+  border-color: #99c2e6;
   cursor: not-allowed;
+}
+
+/* Secondary button - Used for actions like "Cancel" */
+.btn-secondary {
+  background: #f8f9fa;
+  color: #444;
+  border-color: #ddd;
+}
+
+.btn-secondary:hover {
+  background: #e9ecef;
+  border-color: #ccc;
+}
+
+/* Play button - Special variant for execution actions */
+.btn-play {
+  background: #0066cc;
+  color: white;
+  border-color: #0066cc;
+}
+
+.btn-play:hover {
+  background: #0052a3;
+  border-color: #0052a3;
+}
+
+.btn-play:disabled {
+  background: #99c2e6;
+  border-color: #99c2e6;
+  cursor: not-allowed;
+}
+
+/* Delete button */
+.btn-delete {
+  background: transparent;
+  color: #dc3545;
+  border-color: #dc3545;
+  padding: 6px 12px;
+  height: 36px;
+}
+
+.btn-delete:hover {
+  background: #fff5f5;
+}
+
+/* Settings button */
+.btn-settings {
+  background: #f8f9fa;
+  color: #444;
+  border-color: #ddd;
+}
+
+.btn-settings:hover {
+  background: #e9ecef;
+  border-color: #ccc;
+}
+
+/* Logout button */
+.btn-logout {
+  background: transparent;
+  color: #666;
+  border-color: transparent;
+  padding: 4px 8px;
+  height: auto;
+  font-size: 13px;
+}
+
+.btn-logout:hover {
+  color: #dc3545;
+}
+
+/* Add button (for new steps) */
+.btn-add {
+  background: #0066cc;
+  color: white;
+  border-color: #0066cc;
+}
+
+.btn-add:hover {
+  background: #0052a3;
+  border-color: #0052a3;
+}
+
+/* Update specific button containers */
+.step-actions {
+  display: flex;
+  gap: 8px;
+  min-width: 120px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.modal-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+.flow-selector {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+/* Icon styles within buttons */
+.play-icon, .delete-icon, .add-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .step-actions {
+    margin-top: 16px;
+    width: 100%;
+    justify-content: stretch;
+  }
+  
+  .btn-play, 
+  .btn-delete,
+  .btn-add {
+    flex: 1;
+    justify-content: center;
+  }
 }
 
 /* Steps */
 .step-block {
   margin: 20px 0;
-  padding: 24px;
-  border: 1px solid #ddd;
-  position: relative;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  transition: all 0.2s ease;
 }
 
-.step-content {
+
+.step-block.executed {
+  border-left: 4px solid #4CAF50;
+}
+
+.step-block.executing {
+  border-left: 4px solid #2196F3;
+  background-color: #f8f9fa;
+}
+
+/* Step header */
+.step-header {
   display: flex;
-  gap: 24px;
-  align-items: flex-start;
-  width: 100%;
+  align-items: center;
+  padding: 12px 20px;
+  border-bottom: 1px solid #eee;
+  gap: 16px;
 }
 
 .step-number {
-  font-weight: bold;
-  min-width: 30px;
-  flex-shrink: 0;
-  padding-top: 8px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #444;
+  background: #f5f5f5;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
 }
 
-.step-input-container {
+/* Step content */
+.step-content {
+  padding: 20px;
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  border-bottom: 1px solid #eee;
+}
+
+.step-instruction {
   flex: 1;
-  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
-.step-label {
-  font-size: 14px;
+.instruction-label {
+  font-size: 13px;
   color: #666;
-  padding-left: 4px;
+  margin-bottom: 8px;
+  font-weight: 500;
+  line-height: 1;
 }
 
 .step-input {
   width: 100%;
-  padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  margin-bottom: 8px;
-}
-
-.step-block .btn-primary {
-  margin: 0 auto;
-  display: block;
-  min-width: 100px;
-}
-
-
-.code-block {
-  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 14px;
   background: #f8f9fa;
-  border: 1px solid #0066cc;  /* Blue border to match automation theme */
-  border-radius: 4px;
-  overflow: hidden;
+  color: #333;
+  height: 42px;
+  line-height: 1;
 }
 
-.code-block-header {
-  background: #0066cc;
-  color: white;
-  padding: 8px 15px;
-  cursor: pointer;
+.step-actions {
+  display: flex;
+  gap: 8px;
+  min-width: 120px;
+  justify-content: flex-end;
+  margin-top: 22px;
+}
+
+/* Step details section */
+.step-details {
+  padding: 20px;
+  background: #f8f9fa;
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
+}
+
+/* Code and data blocks */
+.code-block, .data-block {
+  margin-bottom: 16px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #e0e0e0;
+}
+
+.code-block-header, .data-block-header {
+  padding: 12px 16px;
+  background: #f1f3f5;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  cursor: pointer;
   user-select: none;
+  font-weight: 500;
+  color: #444;
 }
 
-.code-block-header:hover {
-  background: #0052a3;
+.code-block-header:hover, .data-block-header:hover {
+  background: #e9ecef;
 }
 
-.code-block pre {
+.code-content, .data-content {
+  padding: 16px;
   margin: 0;
-  padding: 15px;
-  white-space: pre-wrap;
-  font-family: monospace;
+  background: white;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 13px;
+  line-height: 1.5;
   max-height: 300px;
   overflow-y: auto;
 }
 
-.code-block.collapsed pre {
+/* Screenshot block */
+.screenshot-block {
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.screenshot-header {
+  padding: 12px 16px;
+  background: #f1f3f5;
+  font-weight: 500;
+  color: #444;
+}
+
+.screenshot-content {
+  padding: 16px;
+  background: white;
+  display: flex;
+  justify-content: center;
+}
+
+.screenshot-content img {
+  max-width: 100%;
+  max-height: 300px;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+/* Icons */
+.icon {
+  margin-right: 8px;
+  font-size: 16px;
+}
+
+.play-icon, .delete-icon {
+  margin-right: 4px;
+}
+
+/* Status styles */
+.step-status {
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 16px;
+  background: #f1f3f5;
+}
+
+.step-status.success {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.step-status.error {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.step-status.info {
+  background: #e3f2fd;
+  color: #1976d2;
+}
+
+/* Buttons */
+.btn-play {
+  padding: 8px 16px;
+  background: #2196F3;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 42px;
+}
+
+.btn-play:hover {
+  background: #1976D2;
+}
+
+.btn-delete {
+  padding: 8px 12px;
+  background: transparent;
+  color: #666;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-delete:hover {
+  color: #dc3545;
+  border-color: #dc3545;
+  background: #fff5f5;
+}
+
+/* Collapsed states */
+.code-block.collapsed .code-content,
+.data-block.collapsed .data-content {
   display: none;
 }
 
-.code-block-header .toggle-icon::after {
+/* Toggle icons */
+.toggle-icon::after {
   content: '▼';
   font-size: 12px;
+  transition: transform 0.2s ease;
 }
 
-.code-block.collapsed .toggle-icon::after {
+.collapsed .toggle-icon::after {
   content: '▶';
 }
 
-/* States */
-.executed {
-  border-left: 3px solid #4CAF50;
-}
-
-.loading {
-  opacity: 0.7;
-}
-
-/* Responsive */
-@media (max-width: 600px) {
-  .header {
-    flex-direction: column;
-    gap: 15px;
-  }
-  
+/* Responsive adjustments */
+@media (max-width: 768px) {
   .step-content {
     flex-direction: column;
-    align-items: stretch;
   }
-} 
-
-/* Replace the pulse animation with a simple highlight */
-.step-block.executing {
-  border-left: 3px solid #0066cc;
-  background-color: #e6f0ff;  /* Light blue background */
+  
+  .step-actions {
+    margin-top: 16px;
+    width: 100%;
+    justify-content: flex-start;
+  }
+  
+  .btn-play, .btn-delete {
+    flex: 1;
+    justify-content: center;
+  }
 }
-
-.step-block.executed {
-  border-left: 3px solid #4CAF50;
-} 
 
 .help-text {
   margin-top: 12px;
@@ -502,7 +771,7 @@ body {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 8px;
   align-items: stretch;
 }
 
@@ -838,4 +1107,153 @@ body {
   position: relative;
   margin-right: 10px;
   margin-bottom: 10px;
+}
+
+/* Add these styles */
+.btn-delete {
+  padding: 4px 8px;
+  font-size: 16px;
+  color: #666;
+  background: transparent;
+  border: none;
+  transition: all 0.2s ease;
+  margin-top: 4px;
+}
+
+.btn-delete:hover {
+  color: #dc3545;
+  background: transparent;
+}
+
+.btn-delete:disabled {
+  color: #ccc;
+  cursor: not-allowed;
+}
+
+.btn-delete:disabled:hover {
+  color: #ccc;
+}
+
+/* Add these new styles for the new step */
+.new-step {
+  background: #fff;
+  border: 1px dashed #2196F3;  /* Dashed border to indicate it's a new step */
+  box-shadow: none;
+}
+
+.new-step:hover {
+  border-color: #1976D2;
+}
+
+.new-step .step-input {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+}
+
+.new-step .instruction-label {
+  color: #2196F3;
+}
+
+/* Add step button styling to match other buttons */
+.btn-add {
+  padding: 8px 16px;
+  background: #2196F3;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-add:hover {
+  background: #1976D2;
+}
+
+.add-icon {
+  font-size: 18px;
+  margin-right: 4px;
+}
+
+/* Update existing styles to ensure consistency */
+.step-block {
+  margin: 20px 0;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  transition: all 0.2s ease;
+}
+
+.step-header {
+  display: flex;
+  align-items: center;
+  padding: 12px 20px;
+  border-bottom: 1px solid #eee;
+  gap: 16px;
+}
+
+.step-content {
+  padding: 20px;
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+
+.step-instruction {
+  flex: 1;
+}
+
+.step-actions {
+  display: flex;
+  gap: 8px;
+  min-width: 120px;
+  justify-content: flex-end;
+}
+
+/* Update responsive styles */
+@media (max-width: 768px) {
+  .step-content {
+    flex-direction: column;
+  }
+  
+  .step-actions {
+    margin-top: 16px;
+    width: 100%;
+    justify-content: stretch;
+  }
+  
+  .btn-play, 
+  .btn-delete,
+  .btn-add {
+    flex: 1;
+    justify-content: center;
+  }
+}
+
+/* Help text styling */
+.help-text {
+  margin-top: 12px;
+  padding: 16px;
+  background: #f3f9ff;
+  border: 1px solid #e3f2fd;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #1976D2;
+}
+
+.help-text p {
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.help-text ul {
+  margin: 8px 0 0 20px;
+  color: #444;
+}
+
+.help-text li {
+  margin: 6px 0;
+  line-height: 1.4;
 }

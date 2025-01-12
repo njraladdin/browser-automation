@@ -288,6 +288,28 @@ app.post('/profiles/:username/api-key', async (req, res) => {
   }
 });
 
+// Add this new endpoint after the other flow endpoints:
+app.delete('/flows/:flowId/step/:stepIndex', async (req, res) => {
+  try {
+    const { flowId, stepIndex } = req.params;
+    const flow = await flowManager.getFlow(flowId);
+    
+    if (!flow) {
+      return res.status(404).json({ success: false, error: 'Flow not found' });
+    }
+
+    const result = await flowManager.deleteStep(flowId, parseInt(stepIndex));
+    
+    if (result.success) {
+      res.json({ success: true });
+    } else {
+      res.status(500).json({ success: false, error: result.error });
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 server.listen(3000, () => {
   console.log('Server running on port 3000');
 }); 
