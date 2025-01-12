@@ -3,19 +3,30 @@ const path = require('path');
 
 class DatabaseManager {
   constructor() {
-    this.db = new sqlite3.Database(path.join(__dirname, 'flows.db'));
+    this.db = new sqlite3.Database(path.join(__dirname, 'app.db'));
     this.initDatabase();
   }
 
   initDatabase() {
     this.db.serialize(() => {
-      // Create flows table
+      // Create profiles table with proper ID
+      this.db.run(`
+        CREATE TABLE IF NOT EXISTS profiles (
+          profile_id TEXT PRIMARY KEY,
+          profile_username TEXT UNIQUE NOT NULL,
+          created_at TEXT NOT NULL
+        )
+      `);
+
+      // Create flows table with profile_id reference
       this.db.run(`
         CREATE TABLE IF NOT EXISTS flows (
           id TEXT PRIMARY KEY,
           name TEXT NOT NULL,
           description TEXT,
-          created_at TEXT NOT NULL
+          created_at TEXT NOT NULL,
+          profile_id TEXT NOT NULL,
+          FOREIGN KEY (profile_id) REFERENCES profiles (profile_id)
         )
       `);
 

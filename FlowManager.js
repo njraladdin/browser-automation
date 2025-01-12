@@ -16,14 +16,14 @@ class FlowManager {
     this.SESSION_TIMEOUT = 20 * 60 * 1000; // 20 minutes
   }
 
-  async createFlow(name, description = '') {
+  async createFlow(name, description = '', profileId) {
     const flowId = `flow_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const createdAt = new Date().toISOString();
 
     try {
       await this.db.run(
-        'INSERT INTO flows (id, name, description, created_at) VALUES (?, ?, ?, ?)',
-        [flowId, name, description, createdAt]
+        'INSERT INTO flows (id, name, description, created_at, profile_id) VALUES (?, ?, ?, ?, ?)',
+        [flowId, name, description, createdAt, profileId]
       );
 
       const flow = {
@@ -173,6 +173,18 @@ class FlowManager {
       );
     } catch (error) {
       console.error('Failed to get flow steps:', error);
+      throw error;
+    }
+  }
+
+  async getAllFlowsForUser(profileId) {
+    try {
+      return await this.db.all(
+        'SELECT * FROM flows WHERE profile_id = ? ORDER BY created_at DESC',
+        [profileId]
+      );
+    } catch (error) {
+      console.error('Failed to get flows for profile:', error);
       throw error;
     }
   }

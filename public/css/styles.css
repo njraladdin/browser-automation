@@ -21,29 +21,95 @@ body {
   top: 0;
   z-index: 100;
   background: white;
-  margin-bottom: 30px;
-  padding: 20px 40px;
+  padding: 15px 25px;
   border-bottom: 1px solid #ddd;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-.header > div:first-child {
-  margin-right: 20px;
+.header-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #eee;
 }
 
-.header h1 {
+.header-title h1 {
   font-size: 24px;
   color: #333;
   margin: 0;
-  white-space: nowrap;
 }
 
-.header > div:last-child {
+.header-controls {
   display: flex;
-  gap: 12px;
+  align-items: center;
+  gap: 24px;
+}
+
+.profile-section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-flow {
+  padding-top: 15px;
+}
+
+.flow-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: stretch;
+
+  gap: 24px;
+}
+
+.flow-selector {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  max-width: 400px;
+}
+
+.flow-selector select {
+  width: 250px;
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+}
+
+.automation-controls {
+  display: flex;
+  gap: 10px;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+@media (max-width: 768px) {
+  .header-main {
+    flex-direction: column;
+    gap: 15px;
+    align-items: stretch;
+  }
+
+  .profile-section {
+    justify-content: space-between;
+  }
+
+  .flow-controls {
+    flex-direction: column;
+    gap: 15px;
+  }
+
+  .flow-selector {
+    width: 100%;
+  }
+
+  .automation-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
 }
 
 .status {
@@ -588,4 +654,72 @@ body {
 .step-status.error {
   background-color: #ffebee;
   color: #c62828;
+}
+
+/* Add these new styles */
+.header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #eee;
+}
+
+.profile-section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: #666;
+}
+
+#currentProfile {
+  font-weight: 500;
+}
+
+/* Update existing header styles */
+.header {
+  padding: 20px 30px;
+}
+
+.header-left {
+  flex: 1;
+}
+
+.header-right {
+  padding-left: 30px;
+  border-left: 1px solid #eee;
+}
+
+/* Update responsive styles */
+@media (max-width: 768px) {
+  .header-top {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 15px;
+  }
+  
+  .header {
+    flex-direction: column;
+    gap: 20px;
+  }
+  
+  .header-right {
+    padding-left: 0;
+    border-left: none;
+    padding-top: 15px;
+    border-top: 1px solid #eee;
+    width: 100%;
+  }
+}
+
+.btn-logout {
+  color: #dc3545;
+  border-color: #dc3545;
+}
+
+.btn-logout:hover {
+  background-color: #dc3545;
+  color: white;
 }

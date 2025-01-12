@@ -393,21 +393,26 @@ class PageSnapshot {
 
     const timestamp = this.snapshot.timestamp.replace(/[:.]/g, '-');
     
+    // Ensure we have resolved HTML content
+    const htmlContent = await Promise.resolve(this.snapshot.html);
+    const interactiveContent = await Promise.resolve(this.snapshot.interactive);
+    const textViewContent = await Promise.resolve(this.snapshot.textView);
+    
     fs.writeFileSync(
       path.join(testDir, `page_${timestamp}.html`),
-      this.snapshot.html,
+      htmlContent,
       'utf8'
     );
 
     fs.writeFileSync(
       path.join(testDir, `interactive_${timestamp}.json`),
-      JSON.stringify(this.snapshot.interactive, null, 2),
+      JSON.stringify(interactiveContent, null, 2),
       'utf8'
     );
 
     fs.writeFileSync(
       path.join(testDir, `text_view_${timestamp}.txt`),
-      this.snapshot.textView,
+      textViewContent,
       'utf8'
     );
 

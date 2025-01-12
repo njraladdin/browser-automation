@@ -24,21 +24,45 @@
     </div>
   </div>
 
-  <div class="header">
-    <div class="header-left">
-      <h1>Web Automation Builder</h1>
-      <div class="flow-selector">
-        <select id="flowSelect" onchange="selectFlow(this.value)">
-          <option value="">Select a flow...</option>
-        </select>
-        <button onclick="showFlowModal()" class="btn btn-primary">New Flow</button>
+  <div id="profileModal" class="modal">
+    <div class="modal-content">
+      <h2>Enter Profile Username</h2>
+      <p class="profile-info">Enter your username to access your automation flows from anywhere</p>
+      <div class="form-group">
+        <label for="username">Username:</label>
+        <input type="text" id="username" placeholder="Enter username..." />
+      </div>
+      <div class="modal-buttons">
+        <button onclick="setProfile()" class="btn btn-primary">Create</button>
       </div>
     </div>
-    <div class="header-right">
-      <button onclick="executeSteps()" class="btn btn-play" id="playButton" disabled title="Run automation from where it left off">
-        <span class="btn-text">▶ Play All Steps</span>
-      </button>
-      <button onclick="resetExecution()" class="btn" disabled>Reset Progress</button>
+  </div>
+
+  <div class="header">
+    <div class="header-main">
+      <div class="header-title">
+        <h1>Web Automation Builder</h1>
+      </div>
+      <div class="profile-section">
+        <span id="currentProfile"></span>
+        <button onclick="logOut()" class="btn btn-logout">Log Out</button>
+      </div>
+    </div>
+    <div class="header-flow">
+      <div class="flow-controls">
+        <div class="flow-selector">
+          <select id="flowSelect" onchange="selectFlow(this.value)">
+            <option value="">Select a flow...</option>
+          </select>
+          <button onclick="showFlowModal()" class="btn btn-primary">New Flow</button>
+        </div>
+        <div class="automation-controls">
+          <button onclick="executeSteps()" class="btn btn-play" id="playButton" disabled title="Run automation from where it left off">
+            <span class="btn-text">▶ Play All Steps</span>
+          </button>
+          <button onclick="resetExecution()" class="btn" disabled>Reset Progress</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -51,13 +75,14 @@
     let lastExecutedStep = -1;
     let currentFlowId = null;
     let socket;
-    let statusPollingInterval;
+    let currentUsername = null;
+    let currentProfileId = null;
 
     // Initialize with first empty step
     window.onload = () => {
-      if (steps.length === 0) {
-        updateStepsList();
-      }
+      checkProfile();
+      loadFlows();
+      updateStepsList();
     };
 
     async function addStep(stepNumber) {
@@ -320,7 +345,10 @@
 
     async function loadFlows() {
       try {
-        const response = await fetch('/flows');
+        const profileId = localStorage.getItem('automationProfileId');
+        if (!profileId) return;
+        
+        const response = await fetch(`/flows?profile_id=${profileId}`);
         const flows = await response.json();
         const select = document.getElementById('flowSelect');
         
@@ -342,6 +370,12 @@
     }
 
     async function createFlow() {
+      if (!currentUsername) {
+        showStatus('Please set up your profile first', 'error');
+        showProfileModal();
+        return;
+      }
+
       const name = document.getElementById('flowName').value;
       const description = document.getElementById('flowDescription').value;
       
@@ -354,22 +388,23 @@
         const response = await fetch('/flows', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, description })
+          body: JSON.stringify({ 
+            name, 
+            description,
+            profile_id: currentProfileId
+          })
         });
         
         const flow = await response.json();
         await loadFlows();
         closeFlowModal();
         
-        // Set the select value to the new flow
         const flowSelect = document.getElementById('flowSelect');
         flowSelect.value = flow.id;
         
-        // Clear the form for next time
         document.getElementById('flowName').value = '';
         document.getElementById('flowDescription').value = '';
         
-        // Select the new flow
         selectFlow(flow.id);
       } catch (error) {
         showStatus('Failed to create flow', 'error');
@@ -377,11 +412,7 @@
     }
 
     async function selectFlow(flowId) {
-      // Stop any existing polling
-      stopStatusPolling();
-      
       if (!flowId) {
-        // Clear current flow when selecting empty option
         currentFlowId = null;
         steps = [];
         lastExecutedStep = -1;
@@ -394,7 +425,6 @@
       }
       
       try {
-        // Initialize socket connection for this flow
         initializeSocket();
         socket.emit('join-flow', flowId);
         
@@ -410,9 +440,6 @@
         lastExecutedStep = -1;
         enableAutomationButtons();
         updateStepsList();
-        
-        // Start polling for flow status
-        startStatusPolling();
       } catch (error) {
         showStatus('Failed to load flow steps', 'error');
       }
@@ -427,12 +454,6 @@
       document.getElementById('playButton').disabled = false;
       document.querySelectorAll('.header-right .btn').forEach(btn => btn.disabled = false);
     }
-
-    // Add this to window.onload to load flows on page load
-    window.onload = () => {
-      loadFlows();
-      updateStepsList(); // This will now show the "select a flow" message
-    };
 
     async function executeStep(stepIndex) {
       if (!currentFlowId) {
@@ -504,54 +525,78 @@
       });
     }
 
-    function startStatusPolling() {
-      if (!currentFlowId) return;
+    async function checkProfile() {
+      const savedUsername = localStorage.getItem('automationUsername');
+      const savedProfileId = localStorage.getItem('automationProfileId');
       
-      // Clear any existing polling
-      stopStatusPolling();
-      
-      // Poll every 30 seconds
-      statusPollingInterval = setInterval(checkFlowStatus, 10000);
-      
-      // Do an immediate check
-      checkFlowStatus();
-    }
-
-    function stopStatusPolling() {
-      if (statusPollingInterval) {
-        clearInterval(statusPollingInterval);
-        statusPollingInterval = null;
+      if (savedUsername && savedProfileId) {
+        try {
+          const response = await fetch(`/profiles/${savedUsername}`);
+          if (response.ok) {
+            const profile = await response.json();
+            setCurrentProfile(profile.profile_username, profile.profile_id);
+            return;
+          }
+        } catch (error) {
+          console.error('Failed to verify profile:', error);
+        }
       }
+      
+      showProfileModal();
     }
 
-    async function checkFlowStatus() {
-      if (!currentFlowId) return;
+    function showProfileModal() {
+      document.getElementById('profileModal').style.display = 'block';
+    }
+
+    function logOut() {
+      localStorage.removeItem('automationUsername');
+      localStorage.removeItem('automationProfileId');
+      currentUsername = null;
+      currentProfileId = null;
+      steps = [];
+      currentFlowId = null;
+      document.getElementById('currentProfile').textContent = '';
+      updateStepsList();
+      showProfileModal();
+    }
+
+    async function setProfile() {
+      const username = document.getElementById('username').value.trim();
+      
+      if (!username) {
+        showStatus('Username is required', 'error');
+        return;
+      }
       
       try {
-        const response = await fetch(`/flows/${currentFlowId}/status`);
-        const data = await response.json();
+        const response = await fetch('/profiles', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username })
+        });
         
-        if (!data.active) {
-          // Browser session has expired
-          console.log('Browser session expired');
-          showStatus('Browser session expired. Progress has been reset.', 'warning');
-          
-          // Reset execution state
-          lastExecutedStep = -1;
-          updateStepsList();
-          
-          // Stop polling since the session is dead
-          stopStatusPolling();
+        if (response.ok) {
+          const profile = await response.json();
+          setCurrentProfile(profile.profile_username, profile.profile_id);
+          document.getElementById('profileModal').style.display = 'none';
+          document.getElementById('username').value = '';
+          await loadFlows(); // Reload flows for new profile
+        } else {
+          showStatus('Failed to set profile', 'error');
         }
       } catch (error) {
-        console.error('Failed to check flow status:', error);
+        showStatus('Failed to set profile', 'error');
       }
     }
 
-    // Add cleanup when leaving the page
-    window.addEventListener('beforeunload', () => {
-      stopStatusPolling();
-    });
+    function setCurrentProfile(username, profileId) {
+      currentUsername = username;
+      currentProfileId = profileId;
+      localStorage.setItem('automationUsername', username);
+      localStorage.setItem('automationProfileId', profileId);
+      document.getElementById('currentProfile').textContent = `Profile: ${username}`;
+    }
   </script>
 
 

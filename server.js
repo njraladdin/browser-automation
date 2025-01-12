@@ -28,8 +28,8 @@ app.get('/', (req, res) => {
 // Flow management endpoints
 app.post('/flows', async (req, res) => {
   try {
-    const { name, description } = req.body;
-    const flow = await flowManager.createFlow(name, description);
+    const { name, description, profile_id } = req.body;
+    const flow = await flowManager.createFlow(name, description, profile_id);
     res.json(flow);
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -38,7 +38,12 @@ app.post('/flows', async (req, res) => {
 
 app.get('/flows', async (req, res) => {
   try {
-    const flows = await flowManager.getAllFlows();
+    const { profile_id } = req.query;
+    if (!profile_id) {
+      return res.json([]);
+    }
+    
+    const flows = await flowManager.getAllFlowsForUser(profile_id);
     res.json(flows);
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -141,23 +146,6 @@ app.post('/flows/:flowId/reset', async (req, res) => {
   }
 });
 
-// Add this endpoint near the other flow-related endpoints
-app.get('/flows/:flowId/status', async (req, res) => {
-  try {
-    const { flowId } = req.params;
-    
-    // Check if flow exists in the active flows map
-    const isActive = flowManager.activeFlows.has(flowId);
-    
-    res.json({ 
-      active: isActive,
-      flowId 
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
 // Socket.IO connection handling
 io.on('connection', (socket) => {
   console.log('Client connected');
@@ -209,6 +197,55 @@ app.post('/flows/:flowId/execute-step/:stepIndex', async (req, res) => {
       stepIndex: parseInt(req.params.stepIndex)
     });
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Create/verify profile
+app.post('/profiles', async (req, res) => {
+  try {
+    const { username } = req.body;
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    // Check if profile exists
+    const existing = await flowManager.db.get(
+      'SELECT profile_id, profile_username FROM profiles WHERE profile_username = ?',
+      [username]
+    );
+
+    if (!existing) {
+      // Create new profile with generated ID
+      const profileId = `profile_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      await flowManager.db.run(
+        'INSERT INTO profiles (profile_id, profile_username, created_at) VALUES (?, ?, ?)',
+        [profileId, username, new Date().toISOString()]
+      );
+      res.json({ profile_id: profileId, profile_username: username });
+    } else {
+      res.json(existing);
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Verify profile exists
+app.get('/profiles/:username', async (req, res) => {
+  try {
+    const { username } = req.params;
+    const profile = await flowManager.db.get(
+      'SELECT profile_id, profile_username FROM profiles WHERE profile_username = ?',
+      [username]
+    );
+    
+    if (profile) {
+      res.json(profile);
+    } else {
+      res.status(404).json({ error: 'Profile not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

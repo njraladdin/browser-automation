@@ -60,15 +60,12 @@ keep screenshot preview of the page in frontend and send it after each step, don
 you can create and save flows, done 
 you can play a single step, done 
 make step UI conssitent before and after adding (same layout), done 
+run websocket server to easily track what's happening in the backend (to easily debug what's going on evne when backend is deployed), done 
+add timeout to close the browser after 20 minutes of intilizing a flow, done 
+create profile, so flows are connected to each user profile (for simplciity, user creates / signs it with just his username), done 
 
 
-run websocket server to easily track what's happening in the backend (to easily debug what's going on evne when backend is deployed).
-
-wbesocket connection is conencted to a fflow, if the websocket connection cuts, we close the browser and rmeove flow form active list 
-
-
-create profile, so flows are connected to each user profile (for simplciity, user creates / signs it with just his username)
-
+add your own gemini key to the project 
 
 run each benchmark, troubleshoot and improve 
 
