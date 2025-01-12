@@ -51,6 +51,7 @@
     let lastExecutedStep = -1;
     let currentFlowId = null;
     let socket;
+    let statusPollingInterval;
 
     // Initialize with first empty step
     window.onload = () => {
@@ -376,6 +377,9 @@
     }
 
     async function selectFlow(flowId) {
+      // Stop any existing polling
+      stopStatusPolling();
+      
       if (!flowId) {
         // Clear current flow when selecting empty option
         currentFlowId = null;
@@ -406,6 +410,9 @@
         lastExecutedStep = -1;
         enableAutomationButtons();
         updateStepsList();
+        
+        // Start polling for flow status
+        startStatusPolling();
       } catch (error) {
         showStatus('Failed to load flow steps', 'error');
       }
@@ -496,6 +503,55 @@
         console.error('Socket connection error:', error);
       });
     }
+
+    function startStatusPolling() {
+      if (!currentFlowId) return;
+      
+      // Clear any existing polling
+      stopStatusPolling();
+      
+      // Poll every 30 seconds
+      statusPollingInterval = setInterval(checkFlowStatus, 10000);
+      
+      // Do an immediate check
+      checkFlowStatus();
+    }
+
+    function stopStatusPolling() {
+      if (statusPollingInterval) {
+        clearInterval(statusPollingInterval);
+        statusPollingInterval = null;
+      }
+    }
+
+    async function checkFlowStatus() {
+      if (!currentFlowId) return;
+      
+      try {
+        const response = await fetch(`/flows/${currentFlowId}/status`);
+        const data = await response.json();
+        
+        if (!data.active) {
+          // Browser session has expired
+          console.log('Browser session expired');
+          showStatus('Browser session expired. Progress has been reset.', 'warning');
+          
+          // Reset execution state
+          lastExecutedStep = -1;
+          updateStepsList();
+          
+          // Stop polling since the session is dead
+          stopStatusPolling();
+        }
+      } catch (error) {
+        console.error('Failed to check flow status:', error);
+      }
+    }
+
+    // Add cleanup when leaving the page
+    window.addEventListener('beforeunload', () => {
+      stopStatusPolling();
+    });
   </script>
 
 

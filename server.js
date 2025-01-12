@@ -141,6 +141,23 @@ app.post('/flows/:flowId/reset', async (req, res) => {
   }
 });
 
+// Add this endpoint near the other flow-related endpoints
+app.get('/flows/:flowId/status', async (req, res) => {
+  try {
+    const { flowId } = req.params;
+    
+    // Check if flow exists in the active flows map
+    const isActive = flowManager.activeFlows.has(flowId);
+    
+    res.json({ 
+      active: isActive,
+      flowId 
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Socket.IO connection handling
 io.on('connection', (socket) => {
   console.log('Client connected');

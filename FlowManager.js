@@ -1,10 +1,19 @@
 const AutomationFlow = require('./AutomationFlow');
 const DatabaseManager = require('./DatabaseManager');
+/*
+about flow timeout: 
+when the user gets a flow, we start a timer for 20 minutes (he selects a flow in the frontend)
+after 20 minutes, we simply deactivate the flow (close browser, clear any instances or state)
 
+this is to prevent the browser being left open for too long (chrome)
+
+the frontend 
+*/
 class FlowManager {
   constructor() {
     this.db = new DatabaseManager();
-    this.activeFlows = new Map(); // Keep track of active automation instances
+    this.activeFlows = new Map();
+    this.SESSION_TIMEOUT = 20 * 60 * 1000; // 20 minutes
   }
 
   async createFlow(name, description = '') {
@@ -24,6 +33,18 @@ class FlowManager {
         createdAt,
         automationFlowInstance: new AutomationFlow()
       };
+
+      // Set timeout to close browser after 20 minutes
+      setTimeout(async () => {
+        console.log(`Flow ${flowId} reached 20 minute limit, closing browser...`);
+        if (this.activeFlows.has(flowId)) {
+          const flow = this.activeFlows.get(flowId);
+          if (flow.automationFlowInstance) {
+            await flow.automationFlowInstance.closeBrowser();
+          }
+          this.activeFlows.delete(flowId);
+        }
+      }, this.SESSION_TIMEOUT);
 
       this.activeFlows.set(flowId, flow);
       return flow;
