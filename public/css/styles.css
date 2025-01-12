@@ -148,12 +148,48 @@ body {
 
 
 .code-block {
-  margin-top: 20px;
-  padding: 16px;
-  background: #f5f5f5;
-  font-family: monospace;
-  overflow-x: auto;
+  margin-top: 10px;
+  background: #f8f9fa;
+  border: 1px solid #0066cc;  /* Blue border to match automation theme */
   border-radius: 4px;
+  overflow: hidden;
+}
+
+.code-block-header {
+  background: #0066cc;
+  color: white;
+  padding: 8px 15px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  user-select: none;
+}
+
+.code-block-header:hover {
+  background: #0052a3;
+}
+
+.code-block pre {
+  margin: 0;
+  padding: 15px;
+  white-space: pre-wrap;
+  font-family: monospace;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.code-block.collapsed pre {
+  display: none;
+}
+
+.code-block-header .toggle-icon::after {
+  content: '▼';
+  font-size: 12px;
+}
+
+.code-block.collapsed .toggle-icon::after {
+  content: '▶';
 }
 
 /* States */

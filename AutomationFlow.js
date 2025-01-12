@@ -42,7 +42,10 @@ class AutomationFlow {
           }
         });
         this.page = await this.browser.newPage();
-        await this.page.goto(this.INITIAL_URL);
+        
+        console.log('Navigating to initial URL...');
+        await this.page.goto(this.INITIAL_URL, { waitUntil: 'networkidle0' });
+        
         return { browser: this.browser, page: this.page };
       } catch (error) {
         console.error('Failed to launch browser:', error);
@@ -231,7 +234,8 @@ User Instructions: ${instructions}`;
         }
       });
 
-      const textContent = this.pageSnapshot.generateTextView();
+      // Generate the text view, automatically loading HTML if needed
+      const textContent = await this.pageSnapshot.generateTextView(this.page);
 
       const systemPrompt = `You are an AI assistant that parses webpage text content and extracts structured information.
 

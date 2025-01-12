@@ -136,6 +136,10 @@
                 <input type="text" value="${step.instructions}" class="step-input" readonly />
                 ${step.code ? `
                   <div class="code-block">
+                    <div class="code-block-header" onclick="toggleCodeBlock(this)">
+                      <span>🤖 Automation Code</span>
+                      <span class="toggle-icon"></span>
+                    </div>
                     <pre>${step.code}</pre>
                   </div>
                 ` : ''}
@@ -442,6 +446,11 @@
         stepBlock.classList.remove('executing');
         playButton.disabled = false;
       }
+    }
+
+    function toggleCodeBlock(header) {
+      const codeBlock = header.parentElement;
+      codeBlock.classList.toggle('collapsed');
     }
   </script>
 

@@ -425,11 +425,15 @@ class PageSnapshot {
     });
   }
 
-  generateTextView() {
+  async generateTextView(page) {
+    if (!this.$) {
+      console.log('Loading page HTML for text view generation...');
+      await this.loadPageHtml(page);
+    }
+console.log('html loaded')
     // Clean main document HTML - only body content
-    const $main = this.$;
-    $main('body *').each((_, el) => {
-      const $el = $main(el);
+    this.$('body *').each((_, el) => {
+      const $el = this.$(el);
       const attrs = Object.keys(el.attribs || {});
       
       // Remove all attributes except src, aria-label, and href
@@ -440,7 +444,7 @@ class PageSnapshot {
       });
     });
     
-    let fullSource = $main('body').html();
+    let fullSource = this.$('body').html();
     
     // Add shadow DOM content
     if (this.snapshot.shadowDOM) {
@@ -520,6 +524,19 @@ class PageSnapshot {
       // Clean up excess whitespace
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  async loadPageHtml(page) {
+    try {
+      const html = await page.content();
+      this.$ = cheerio.load(html, {
+        decodeEntities: true,
+        xmlMode: false
+      });
+    } catch (error) {
+      console.error('Failed to load page HTML:', error);
+      throw error;
+    }
   }
 }
 
