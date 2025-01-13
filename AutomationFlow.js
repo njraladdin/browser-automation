@@ -79,16 +79,46 @@ class AutomationFlow {
     );
   }
 
-  async addAutomationStep(instructions) {
+  async addAutomationStep(instructions, statusEmitter = () => {}) {
     try {
-      console.log('Generating code for new step...');
+      statusEmitter({ 
+        message: 'Generating code for new step...', 
+        type: 'executing', 
+        stepIndex: this.automationSteps.length 
+      });
       
       if (!this.browser || !this.page) {
-        console.log('Browser not initialized, initializing now...');
-        const { browser, page } = await this.initBrowser();
-        this.browser = browser;
-        this.page = page;
+        statusEmitter({ 
+          message: 'Initializing browser...', 
+          type: 'executing', 
+          stepIndex: this.automationSteps.length 
+        });
+        
+        try {
+          const { browser, page } = await this.initBrowser();
+          this.browser = browser;
+          this.page = page;
+          
+          statusEmitter({ 
+            message: 'Browser initialized successfully', 
+            type: 'info', 
+            stepIndex: this.automationSteps.length 
+          });
+        } catch (browserError) {
+          statusEmitter({ 
+            message: `Browser initialization failed: ${browserError.message}`, 
+            type: 'error', 
+            stepIndex: this.automationSteps.length 
+          });
+          throw browserError;
+        }
       }
+
+      statusEmitter({ 
+        message: 'Analyzing page and generating automation code...', 
+        type: 'info', 
+        stepIndex: this.automationSteps.length 
+      });
 
       const snapshot = await this.pageSnapshot.captureSnapshot(this.page);
 
@@ -268,15 +298,35 @@ User Instructions: ${instructions}`;
       
       console.log({code});
       
+      // After generating the code, immediately execute it
+      const stepIndex = this.automationSteps.length;
       this.automationSteps.push({ 
         instructions, 
         code,
         screenshot: null
       });
+
+      // Execute the newly added step
+      const executionResult = await this.executeSingleStep(stepIndex, statusEmitter);
       
-      return { success: true, code };
+      if (!executionResult.success) {
+        throw new Error(executionResult.error);
+      }
+      
+      return { 
+        success: true, 
+        code,
+        executionResult,
+        screenshot: this.automationSteps[stepIndex].screenshot,
+        extractedData: this.automationSteps[stepIndex].extractedData
+      };
     } catch (error) {
-      console.error('Failed to add step:', error);
+      console.error('Failed to add and execute step:', error);
+      statusEmitter({ 
+        message: `Failed: ${error.message}`, 
+        type: 'error', 
+        stepIndex: this.automationSteps.length 
+      });
       return { success: false, error: error.message };
     }
   }

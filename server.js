@@ -75,17 +75,26 @@ app.post('/flows/:flowId/step', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Flow not found' });
     }
 
-    const result = await flow.automationFlowInstance.addAutomationStep(instructions);
+    // Create a status emitter for this flow
+    const statusEmitter = (status) => emitFlowStatus(flowId, status);
+
+    // Add and execute the step, passing the status emitter
+    const result = await flow.automationFlowInstance.addAutomationStep(
+      instructions, 
+      statusEmitter
+    );
+    
     if (result.success) {
       await flowManager.addStepToFlow(flowId, instructions, result.code);
-    } else {
-      emitFlowStatus(flowId, { 
-        message: `Failed to add step: ${result.error}`, 
-        type: 'error',
-        stepIndex: flow.automationFlowInstance.automationSteps.length
+      res.json({
+        success: true,
+        code: result.code,
+        screenshot: result.screenshot,
+        extractedData: result.extractedData
       });
+    } else {
+      res.json({ success: false, error: result.error });
     }
-    res.json(result);
   } catch (error) {
     emitFlowStatus(req.params.flowId, { 
       message: `Server error: ${error.message}`, 

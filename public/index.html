@@ -85,7 +85,7 @@
           <button onclick="executeSteps()" class="btn btn-play" id="playButton" disabled>
             <span class="play-icon">▶</span> <span class="btn-text">Play All Steps</span>
           </button>
-          <button onclick="resetExecution()" class="btn btn-secondary" disabled>Reset Progress</button>
+          <button onclick="resetExecution()" class="btn btn-secondary" >Reset Progress</button>
         </div>
       </div>
     </div>
@@ -140,11 +140,16 @@
         if (data.success) {
           steps.push({ 
             instructions, 
-            code: data.code
+            code: data.code,
+            screenshot: data.screenshot,
+            extractedData: data.extractedData
           });
           
+          // Update lastExecutedStep since we just executed this step
+          lastExecutedStep = steps.length - 1;
+          
           updateStepsList();
-          showStatus('Step added successfully!');
+          showStatus('Step added and executed successfully!');
           stepBlock.classList.remove('loading');
           playButton.disabled = false;
         } else {
@@ -197,7 +202,7 @@
             
             <div class="step-actions">
               <button onclick="executeStep(${index})" class="btn btn-play" id="play-step-${index}">
-                <span class="play-icon">▶</span> Run Step
+                <span class="play-icon">▶</span> ${index <= lastExecutedStep ? 'Re-Run Step' : 'Run Step'}
               </button>
               <button onclick="deleteStep(${index})" class="btn btn-delete" title="Delete step">
                 <span class="delete-icon">🗑</span>
@@ -327,12 +332,9 @@
       }
     }
 
-    async function executeAllSteps() {
-      await resetExecution();
-      await executeSteps();
-    }
 
     async function resetExecution() {
+      console.log('[resetExecution] Starting reset');
       if (!currentFlowId) {
         showStatus('Please select a flow first', 'error');
         return;
@@ -583,7 +585,7 @@
           stepBlock.classList.remove('executing', 'success', 'error');
           
           // Add appropriate class based on status type
-          if (status.type === 'executing') {
+          if (status.type === 'executing' || status.type === 'info') {
             stepBlock.classList.add('executing');
           } else if (status.type === 'success') {
             stepBlock.classList.add('executed');
@@ -603,7 +605,7 @@
             stepBlock.querySelector('.step-header').appendChild(statusElement);
           }
           statusElement.textContent = status.message;
-          statusElement.className = `step-status ${status.type}`;
+          statusElement.className = `step-status ${status.type === 'info' ? 'executing' : status.type}`;
         }
       });
       
