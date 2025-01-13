@@ -319,7 +319,13 @@ app.delete('/flows/:flowId/step/:stepIndex', async (req, res) => {
     const result = await flowManager.deleteStep(flowId, parseInt(stepIndex));
     
     if (result.success) {
-      res.json({ success: true });
+      // Get updated steps after deletion
+      const updatedSteps = await flowManager.getFlowSteps(flowId);
+      res.json({ 
+        success: true, 
+        steps: updatedSteps,
+        lastExecutedStep: flow.automationFlowInstance.lastExecutedStep
+      });
     } else {
       res.status(500).json({ success: false, error: result.error });
     }

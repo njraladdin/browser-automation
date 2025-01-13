@@ -778,13 +778,16 @@
         
         const data = await response.json();
         if (data.success) {
-          // Remove step from local array
-          steps.splice(stepIndex, 1);
+          // Update local steps array with the new steps from server
+          steps = data.steps.map(step => ({
+            instructions: step.instructions,
+            code: step.code,
+            extractedData: step.extractedData,
+            screenshot: step.screenshot
+          }));
           
-          // Reset execution state if we deleted a previously executed step
-          if (stepIndex <= lastExecutedStep) {
-            lastExecutedStep = stepIndex - 1;
-          }
+          // Update lastExecutedStep
+          lastExecutedStep = data.lastExecutedStep;
           
           updateStepsList();
           showStatus('Step deleted successfully!');

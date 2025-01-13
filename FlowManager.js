@@ -191,30 +191,42 @@ class FlowManager {
 
   async deleteStep(flowId, stepIndex) {
     try {
-      // Delete step from database
-      await this.db.run(
-        'DELETE FROM steps WHERE flow_id = ? AND order_index = ?',
-        [flowId, stepIndex]
-      );
-      
-      // Update order_index for remaining steps
-      await this.db.run(
-        'UPDATE steps SET order_index = order_index - 1 WHERE flow_id = ? AND order_index > ?',
-        [flowId, stepIndex]
-      );
-      
-      // Update step in active flow if it exists
-      if (this.activeFlows.has(flowId)) {
-        const flow = this.activeFlows.get(flowId);
-        if (flow.automationFlowInstance) {
-          flow.automationFlowInstance.automationSteps.splice(stepIndex, 1);
+        // Delete step from database
+        await this.db.run(
+            'DELETE FROM steps WHERE flow_id = ? AND order_index = ?',
+            [flowId, stepIndex]
+        );
+        
+        // Update order_index for remaining steps
+        await this.db.run(
+            'UPDATE steps SET order_index = order_index - 1 WHERE flow_id = ? AND order_index > ?',
+            [flowId, stepIndex]
+        );
+        
+        // Update step in active flow if it exists
+        if (this.activeFlows.has(flowId)) {
+            const flow = this.activeFlows.get(flowId);
+            if (flow.automationFlowInstance) {
+                // Remove the step from automationSteps array
+                flow.automationFlowInstance.automationSteps.splice(stepIndex, 1);
+                // Reset lastExecutedStep if needed
+                if (stepIndex <= flow.automationFlowInstance.lastExecutedStep) {
+                    flow.automationFlowInstance.lastExecutedStep = stepIndex - 1;
+                }
+            }
+            
+            // Also update the steps array in the flow object
+            const updatedSteps = await this.db.all(
+                'SELECT * FROM steps WHERE flow_id = ? ORDER BY order_index',
+                [flowId]
+            );
+            flow.steps = updatedSteps;
         }
-      }
-      
-      return { success: true };
+        
+        return { success: true };
     } catch (error) {
-      console.error('Failed to delete step:', error);
-      throw error;
+        console.error('Failed to delete step:', error);
+        throw error;
     }
   }
 }

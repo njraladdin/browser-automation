@@ -74,49 +74,8 @@ run each benchmark, troubleshoot and improve :
     Problem: buttons do not have text, and AI is choosing wrong button selector to submit search, DONE 
     Solutions: - send image of page and label each element. - add nearby text to each element
 
-    Problem: AI can't handle multiple actions in one step because it only sees the page's initial state. It doesn't know how the page changes after opening a modal.
-
-    Desired Outcome:  AI should be able to click through all media items, open each modal, extract the media link, close the modal, and move to the next item.
-
-    Current Workaround:
-    1. Instruct the AI to open a single modal.
-    2. Then, instruct it to extract the media link.
-    3. Finally, instruct it to repeat these steps for all items.
-
-    Challenge: this process is complex for users, as they must manually guide the AI through each step.
-
-    Solutions:
-1. Mini-Steps Approach
-How it works:
-- AI breaks task into smaller explicit steps
-- Each step generates temporary code
-- AI learns from these steps
-- Generates final optimized code
-- User only sees final result
-
-2. Dynamic Snapshot Approach
-How it works:
-- AI writes partial code
-- Requests new snapshot when needed
-- Continues writing with new context
-- Uses special function to request updates
-
-3. Template First Approach
-How it works:
-- AI writes complete code structure
-- Marks unknown parts with placeholders
-- Code runs until placeholder
-- Gets new snapshot at placeholder
-- AI fills in missing parts
-- Continues execution
-
-4. Step-by-Step Navigation
-How it works:
-- AI acts like human browsing website
-- Writes and executes one action at a time
-- Gets new snapshot after each action
-- Builds complete understanding
-- Writes final loop code once pattern is learned
+    Problem: an error might face the scritp while running due to some change in page structure. 
+    Solutions: when cathcing an error, resend the script to gemini with error message and new pash snapshot, and update script 
 
 
 

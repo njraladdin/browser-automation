@@ -274,11 +274,11 @@ User Instructions: ${instructions}`;
       }
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({
-        model: "gemini-2.0-flash-exp",
+        model: "gemini-exp-1206",
         generationConfig: {
           temperature: 0.6,
           topP: 0.95,
-          topK: 40,
+          topK: 64,
           maxOutputTokens: 8192,
         }
       });

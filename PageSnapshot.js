@@ -172,6 +172,16 @@ class PageSnapshot {
       textContent: []
     };
 
+    // Helper function to process selector
+    const processSelector = (originalSelector) => {
+      if (originalSelector.length <= 500) {
+        return originalSelector;
+      }
+      const shortSelector = `__SELECTOR__${++this.selectorCounter}`;
+      this.selectorToOriginalMap.set(shortSelector, originalSelector);
+      return shortSelector;
+    };
+
     // Modify the shadow DOM parsing section
     const parseShadowContent = (shadowTree, parentPath = '') => {
       const temp = this.$('<div>').html(shadowTree.content);
@@ -180,13 +190,11 @@ class PageSnapshot {
       temp.find('input, textarea, select').each((_, el) => {
         const $el = this.$(el);
         const originalSelector = `${shadowTree.hostElement.tagName} > input[type="${$el.attr('type')}"]`;
-        
-        const shortSelector = `__SELECTOR__${++this.selectorCounter}`;
-        this.selectorToOriginalMap.set(shortSelector, originalSelector);
+        const selector = processSelector(originalSelector);
         
         interactiveView.inputs.push({
           type: $el.attr('type') || el.tagName.toLowerCase(),
-          selector: shortSelector,
+          selector: selector,
           placeholder: $el.attr('placeholder'),
           id: $el.attr('id'),
           role: $el.attr('role'),
@@ -197,17 +205,15 @@ class PageSnapshot {
         });
       });
 
-      // Similar changes for buttons in shadow DOM
+      // Update buttons section
       temp.find('button, [role="button"]').each((_, el) => {
         const $el = this.$(el);
         const originalSelector = `${shadowTree.hostElement.tagName} > button`;
-        
-        const shortSelector = `__SELECTOR__${++this.selectorCounter}`;
-        this.selectorToOriginalMap.set(shortSelector, originalSelector);
+        const selector = processSelector(originalSelector);
         
         interactiveView.buttons.push({
           text: $el.text().trim(),
-          selector: shortSelector,
+          selector: selector,
           type: $el.attr('type'),
           id: $el.attr('id'),
           role: $el.attr('role'),
@@ -218,24 +224,21 @@ class PageSnapshot {
         });
       });
 
-      // Similar changes for links in shadow DOM
+      // Update links section
       temp.find('a').each((_, el) => {
         const $el = this.$(el);
         const text = $el.text().trim();
         const ariaLabel = $el.attr('aria-label');
         
-        // Skip links that don't have text content or aria-label
         if (!text && !ariaLabel) return;
 
         const originalSelector = `${shadowTree.hostElement.tagName} > a`;
-        
-        const shortSelector = `__SELECTOR__${++this.selectorCounter}`;
-        this.selectorToOriginalMap.set(shortSelector, originalSelector);
+        const selector = processSelector(originalSelector);
         
         interactiveView.links.push({
           text: text,
           href: $el.attr('href'),
-          selector: shortSelector,
+          selector: selector,
           id: $el.attr('id'),
           role: $el.attr('role'),
           'aria-label': ariaLabel,
@@ -257,17 +260,15 @@ class PageSnapshot {
     this.$('input, textarea, select, [type="search"], [contenteditable="true"], faceplate-search-input, *[role="searchbox"], *[role="textbox"]').each((index, el) => {
       const $el = this.$(el);
       const originalSelector = this.generateSelector($el);
+      const selector = processSelector(originalSelector);
 
       const getAttr = (attr) => {
         return $el.attr(attr) || $el.find(`[${attr}]`).first().attr(attr);
       };
 
-      const shortSelector = `__SELECTOR__${++this.selectorCounter}`;
-      this.selectorToOriginalMap.set(shortSelector, originalSelector);
-      
       interactiveView.inputs.push({
         type: getAttr('type') || el.tagName.toLowerCase(),
-        selector: shortSelector,
+        selector: selector,
         placeholder: getAttr('placeholder'),
         id: getAttr('id'),
         role: getAttr('role'),
@@ -282,13 +283,11 @@ class PageSnapshot {
     this.$('button, [role="button"]').each((index, el) => {
       const $el = this.$(el);
       const originalSelector = this.generateSelector($el);
-
-      const shortSelector = `__SELECTOR__${++this.selectorCounter}`;
-      this.selectorToOriginalMap.set(shortSelector, originalSelector);
+      const selector = processSelector(originalSelector);
       
       interactiveView.buttons.push({
         text: $el.text().trim(),
-        selector: shortSelector,
+        selector: selector,
         type: $el.attr('type'),
         id: $el.attr('id'),
         role: $el.attr('role'),
@@ -308,14 +307,12 @@ class PageSnapshot {
       if (!text && !ariaLabel) return;
 
       const originalSelector = this.generateSelector($el);
-
-      const shortSelector = `__SELECTOR__${++this.selectorCounter}`;
-      this.selectorToOriginalMap.set(shortSelector, originalSelector);
+      const selector = processSelector(originalSelector);
       
       interactiveView.links.push({
         text: text,
         href: $el.attr('href'),
-        selector: shortSelector,
+        selector: selector,
         id: $el.attr('id'),
         role: $el.attr('role'),
         'aria-label': ariaLabel
