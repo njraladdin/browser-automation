@@ -14,7 +14,7 @@ class AutomationFlow {
     this.page = null;
     this.automationSteps = [];
     this.lastExecutedStep = -1;
-    this.INITIAL_URL = 'https://airbnb.com/';
+    this.INITIAL_URL = 'https://anonyig.com/en/';
     this.browserInitializing = null;
     this.statusCallback = null;
   }
@@ -152,19 +152,77 @@ try {
 }
 
 For data extraction tasks:
-You can use: await parseTextViewWithAI(structurePrompt)
-where structurePrompt is a string explaining what data to extract from the page.
-Example:
+The parseTextViewWithAI function returns the extracted data directly (either as an object or string).
+Your code should wrap the result in a success/extractedData object when using this function.
+
+Example using parseTextViewWithAI:
 try {
   console.log('Extracting product data...');
-  const data = await parseTextViewWithAI('Extract all product listings with their prices, names, and descriptions');
-  console.log('Extracted data:', data);
+  const extractedData = await parseTextViewWithAI('Extract all product listings with their prices, names, and descriptions');
+  console.log('Extracted data:', extractedData);
+  return { 
+    success: true, 
+    extractedData 
+  };
 } catch (error) {
   console.error('Failed to extract data:', error);
   throw error;
 }
 
 IMPORTANT: if you need to do any sorts of extraction of data, you need to use the given function like the example above. you jsut give which data you want in the prop and the function would take care of the rest. do not try to use querySelectorAll or anything like that.
+IMPORTANT: When using parseTextViewWithAI, always wrap its result in a success/extractedData object and return it.
+
+For returning extracted data:
+Any time you need to return data (whether from parseTextViewWithAI or your own extraction logic), use this format:
+return {
+  success: true,
+  extractedData: data  // can be an object, array, or string
+};
+
+Examples:
+
+1. Using parseTextViewWithAI:
+try {
+  console.log('Extracting product data...');
+  const extractedData = await parseTextViewWithAI('Extract all product listings with their prices, names, and descriptions');
+  console.log('Extracted data:', extractedData);
+  return { 
+    success: true, 
+    extractedData 
+  };
+} catch (error) {
+  console.error('Failed to extract data:', error);
+  throw error;
+}
+
+2. Custom data extraction example:
+try {
+  console.log('Extracting links from page...');
+  const links = [];
+  await page.evaluate(() => {
+    const elements = document.querySelectorAll('__SELECTOR__1');
+    elements.forEach(el => {
+      links.push({
+        href: el.href,
+        text: el.textContent
+      });
+    });
+  });
+  console.log('Extracted links:', links);
+  return {
+    success: true,
+    extractedData: links
+  };
+} catch (error) {
+  console.error('Failed to extract links:', error);
+  throw error;
+}
+
+IMPORTANT: 
+- If you need to extract or collect any data, always return it in the success/extractedData format
+- This applies to both parseTextViewWithAI results and any custom data collection
+- The extractedData can be any type of data structure (object, array, string, etc.)
+
 Current Page URL: ${snapshot.url}
 -you can use the given interactive elements map where you are provided each element on the page and it's selector so you can interact with them. Use the selectors exactly as they appear in the 'selector' field (in format __SELECTOR__N). DO NOT MODIFY THE SELECTORS. use the interactive map as a guide.
 
@@ -241,7 +299,6 @@ User Instructions: ${instructions}`;
         }
       });
 
-      // Generate the text view, automatically loading HTML if needed
       const textContent = await this.pageSnapshot.generateTextView(this.page);
 
       const systemPrompt = `You are an AI assistant that parses webpage text content and extracts structured information.
@@ -318,18 +375,10 @@ User Instructions: ${instructions}`;
         'utf8'
       );
 
-      // Parse the response and update the current step
       try {
-        const extractedData = JSON.parse(parsedText);
-        if (this.lastExecutedStep < this.automationSteps.length) {
-          this.automationSteps[this.lastExecutedStep].extractedData = extractedData;
-        }
-        return extractedData;
+        return JSON.parse(parsedText);
       } catch (e) {
         console.warn('Warning: AI response was not valid JSON, returning raw text');
-        if (this.lastExecutedStep < this.automationSteps.length) {
-          this.automationSteps[this.lastExecutedStep].extractedData = parsedText;
-        }
         return parsedText;
       }
 
@@ -491,7 +540,11 @@ User Instructions: ${instructions}`;
       );
 
       try {
-        await stepFunction(this.page, this.parseTextViewWithAI.bind(this));
+        const result = await stepFunction(this.page, this.parseTextViewWithAI.bind(this));
+        // If the result contains extractedData, store it in the step
+        if (result && result.success && result.extractedData) {
+          this.automationSteps[stepIndex].extractedData = result.extractedData;
+        }
         statusEmitter({ 
           message: 'Step executed successfully', 
           type: 'success', 

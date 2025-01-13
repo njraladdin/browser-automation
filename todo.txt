@@ -65,9 +65,7 @@ add timeout to close the browser after 20 minutes of intilizing a flow, done
 create profile, so flows are connected to each user profile (for simplciity, user creates / signs it with just his username), done 
 add your own gemini key to the project, done 
 be bale to delete a step , done 
-
-
-
+allow ai to colelct data and push it to frontend, nto just the extract function, done 
 
 run each benchmark, troubleshoot and improve 
 
