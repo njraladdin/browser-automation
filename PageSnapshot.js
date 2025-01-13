@@ -213,7 +213,8 @@ class PageSnapshot {
           role: $el.attr('role'),
           'aria-label': $el.attr('aria-label'),
           disabled: $el.prop('disabled'),
-          shadowPath: `${currentPath} > ${el.tagName.toLowerCase()}`
+          shadowPath: `${currentPath} > ${el.tagName.toLowerCase()}`,
+          nearbyElementsText: this.getNearbyElementsText($el)
         });
       });
 
@@ -292,7 +293,8 @@ class PageSnapshot {
         id: $el.attr('id'),
         role: $el.attr('role'),
         'aria-label': $el.attr('aria-label'),
-        disabled: $el.prop('disabled')
+        disabled: $el.prop('disabled'),
+        nearbyElementsText: this.getNearbyElementsText($el)
       });
     });
 
@@ -337,43 +339,88 @@ class PageSnapshot {
     let current = $el;
     let foundUniqueAncestor = false;
 
+    // Helper to sanitize class names
+    const sanitizeClassName = (className) => {
+      return className
+        .replace(/[^\w-]/g, '_') // Replace any non-word chars (except hyphens) with underscore
+        .replace(/^(\d)/, '_$1'); // Prefix with underscore if starts with number
+    };
+
     while (current.length && !foundUniqueAncestor) {
       let selector = current[0].tagName.toLowerCase();
       
       // Add id if present
       const currentId = current.attr('id');
       if (currentId) {
-        selector = `#${currentId}`;
+        selector = `#${sanitizeClassName(currentId)}`;
         foundUniqueAncestor = true;
       } else {
         // Add classes that help identify the element
         const classes = current.attr('class');
         if (classes) {
-          const safeClasses = classes.split(/\s+/).filter(cls => 
-            /^[a-zA-Z0-9_-]+$/.test(cls) && !cls.match(/^(hover|focus|active)/));
+          const safeClasses = classes.split(/\s+/)
+            .filter(cls => 
+              // Only include basic classes, avoid dynamic/complex ones
+              cls && 
+              !cls.match(/^(hover|focus|active)/) &&
+              !cls.includes('(') &&
+              !cls.includes(')') &&
+              !cls.includes('[') &&
+              !cls.includes(']') &&
+              !cls.includes('\\')
+            )
+            .map(sanitizeClassName);
+
           if (safeClasses.length) {
             selector += '.' + safeClasses.join('.');
           }
         }
 
         // Add nth-child if there are siblings
-        const siblings = current.siblings(selector).add(current);
-        if (siblings.length > 1) {
-          const index = siblings.index(current) + 1;
-          selector += `:nth-child(${index})`;
+        try {
+          const siblings = current.siblings(selector).add(current);
+          if (siblings.length > 1) {
+            const index = siblings.index(current) + 1;
+            selector += `:nth-child(${index})`;
+          }
+        } catch (e) {
+          // If selector is invalid, just use the tag name with nth-child
+          const index = current.parent().children().index(current) + 1;
+          selector = `${current[0].tagName.toLowerCase()}:nth-child(${index})`;
         }
       }
 
-      path.unshift(selector);
+      try {
+        // Test if the selector is valid before adding it
+        this.$(selector);
+        path.unshift(selector);
+      } catch (e) {
+        // If invalid, fall back to basic tag selector
+        path.unshift(current[0].tagName.toLowerCase());
+      }
+
       current = current.parent();
 
-      // Stop if we've reached a unique ancestor
-      if (current.length && this.$(path.join(' > ')).length === 1) {
-        foundUniqueAncestor = true;
+      // Try to find a unique ancestor, but with error handling
+      try {
+        if (current.length && path.length > 0) {
+          const testSelector = path.join(' > ');
+          if (this.$(testSelector).length === 1) {
+            foundUniqueAncestor = true;
+          }
+        }
+      } catch (e) {
+        // If the selector is invalid, continue with the next iteration
+        continue;
       }
     }
 
-    return path.join(' > ');
+    try {
+      return path.join(' > ');
+    } catch (e) {
+      // Fallback to a very basic selector if everything else fails
+      return `${$el[0].tagName.toLowerCase()}:nth-child(${$el.parent().children().index($el) + 1})`;
+    }
   }
 
   findAssociatedLabel($el) {
@@ -397,6 +444,17 @@ class PageSnapshot {
     const htmlContent = await Promise.resolve(this.snapshot.html);
     const interactiveContent = await Promise.resolve(this.snapshot.interactive);
     const textViewContent = await Promise.resolve(this.snapshot.textView);
+
+    // Create a copy of interactive content with both selectors
+    const interactiveWithSelectors = JSON.parse(JSON.stringify(interactiveContent));
+    
+    // Add original selectors to each section
+    ['inputs', 'buttons', 'links'].forEach(section => {
+      interactiveWithSelectors[section] = interactiveWithSelectors[section].map(item => ({
+        ...item,
+        originalSelector: this.selectorToOriginalMap.get(item.selector)
+      }));
+    });
     
     fs.writeFileSync(
       path.join(testDir, `page_${timestamp}.html`),
@@ -406,7 +464,7 @@ class PageSnapshot {
 
     fs.writeFileSync(
       path.join(testDir, `interactive_${timestamp}.json`),
-      JSON.stringify(interactiveContent, null, 2),
+      JSON.stringify(interactiveWithSelectors, null, 2),
       'utf8'
     );
 
@@ -543,6 +601,66 @@ console.log('html loaded')
       throw error;
     }
   }
+
+  getNearbyElementsText($el) {
+    const nearbyElements = new Set();
+
+    // Helper to process an element and its attributes
+    const processElement = ($element) => {
+      const texts = [];
+      
+      // Get element's text content
+      const text = $element.text().trim();
+      if (text) texts.push(text);
+
+      // Get important attributes
+      const placeholder = $element.attr('placeholder');
+      const ariaLabel = $element.attr('aria-label');
+      const type = $element.attr('type');
+      const src = $element.attr('src');
+
+      if (placeholder) texts.push(`placeholder: ${placeholder}`);
+      if (ariaLabel) texts.push(`aria-label: ${ariaLabel}`);
+      if (type) texts.push(`type: ${type}`);
+      if (src) texts.push(`src: ${src}`);
+
+      return texts.join(' | ');
+    };
+
+    // Get parent texts (2 levels up)
+    let parent = $el.parent();
+    for(let i = 0; i < 2 && parent.length; i++) {
+      const text = processElement(parent.clone().children().remove().end());
+      if(text) nearbyElements.add(`parent[${i+1}]: ${text}`);
+      parent = parent.parent();
+    }
+
+    // Get sibling texts (previous and next)
+    const prevSibling = $el.prev();
+    const nextSibling = $el.next();
+    if(prevSibling.length) nearbyElements.add(`prev_sibling: ${processElement(prevSibling)}`);
+    if(nextSibling.length) nearbyElements.add(`next_sibling: ${processElement(nextSibling)}`);
+
+    // Get child texts (direct children and grandchildren)
+    $el.children().slice(0, 2).each((index, child) => {
+      const text = processElement(this.$(child));
+      if(text) nearbyElements.add(`child[${index+1}]: ${text}`);
+    });
+
+    // Get texts from elements with aria-label nearby
+    $el.parent().find('[aria-label], [placeholder], [type], [src]').slice(0, 2).each((index, el) => {
+      const text = processElement(this.$(el));
+      if(text) nearbyElements.add(`nearby_element[${index+1}]: ${text}`);
+    });
+
+    return Array.from(nearbyElements)
+      .filter(text => text.length > 0)
+      .slice(0, 5) // Limit to 5 most relevant nearby texts
+      .join(' || ') // Join different elements with double pipes
+      .replace(/\s+/g, ' ') // Replace multiple spaces with single space
+      .replace(/\n+/g, ' ') // Replace newlines with spaces
+      .trim(); // Remove leading/trailing whitespace
+  }
 }
 
 module.exports = PageSnapshot;
@@ -554,7 +672,7 @@ if (require.main === module) {
   (async () => {
     let browser;
     try {
-      const url = 'https://airbnb.com';
+      const url = 'https://reddit.com';
       console.log(`Testing PageSnapshot with URL: ${url}`);
 
       console.log('Launching browser...');

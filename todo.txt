@@ -67,7 +67,13 @@ add your own gemini key to the project, done
 be bale to delete a step , done 
 allow ai to colelct data and push it to frontend, nto just the extract function, done 
 
-run each benchmark, troubleshoot and improve 
+
+
+run each benchmark, troubleshoot and improve :
+- go to airbnb, search a destination, then extract all data for each pagination page :
+    problem: buttons do not have text, and AI is choosing wrong button selector to submit search 
+    solutions: - send image of page and label each element. - add nearby text to each element, DONE 
+
 
 
 
@@ -75,7 +81,6 @@ run each benchmark, troubleshoot and improve
 
 
 benchmarks: 
--go to airbnb,scroll to load all listings, extract all listings details 
-- go to airbnb, search a destination, then extract all data for each pagination page 
--go to anonymiosu isntagram stories, and get latest stories 
+- go to airbnb,scroll to load all listings, extract all listings details 
+- go to anonymiosu instagram stories, and get latest stories 
 - go to twitter profile, and extract list of tweets until you get 100
