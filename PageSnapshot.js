@@ -821,6 +821,77 @@ console.log('html loaded')
           return path.join(' > ');
         }
 
+        function generateContentMap(element) {
+          const contentMap = [];
+
+          // Helper function to process text content
+          function processTextContent(text) {
+            return text.trim().replace(/\s+/g, ' ');
+          }
+
+          // Process all child elements
+          function processElement(el) {
+            // Skip script and style tags
+            if (['script', 'style', 'noscript'].includes(el.tagName.toLowerCase())) {
+              return;
+            }
+
+            // Get direct text content (excluding child elements)
+            const directText = processTextContent(
+              Array.from(el.childNodes)
+                .filter(node => node.nodeType === Node.TEXT_NODE)
+                .map(node => node.textContent)
+                .join(' ')
+            );
+
+            if (directText) {
+              contentMap.push({
+                type: 'text',
+                content: directText,
+                tag: el.tagName.toLowerCase(),
+                selector: getElementPath(el)
+              });
+            }
+
+            // Handle media elements
+            if (el.tagName.toLowerCase() === 'img') {
+              contentMap.push({
+                type: 'media',
+                mediaType: 'image',
+                src: el.getAttribute('src'),
+                alt: el.getAttribute('alt'),
+                selector: getElementPath(el)
+              });
+            } else if (el.tagName.toLowerCase() === 'video') {
+              contentMap.push({
+                type: 'media',
+                mediaType: 'video',
+                src: el.getAttribute('src'),
+                poster: el.getAttribute('poster'),
+                selector: getElementPath(el)
+              });
+            }
+
+            // Handle structural elements
+            const isStructural = ['main', 'article', 'section', 'header', 'footer', 'nav', 'aside'].includes(el.tagName.toLowerCase());
+            if (isStructural) {
+              contentMap.push({
+                type: 'structure',
+                tag: el.tagName.toLowerCase(),
+                role: el.getAttribute('role'),
+                selector: getElementPath(el),
+                'aria-label': el.getAttribute('aria-label')
+              });
+            }
+
+            // Process child elements recursively
+            Array.from(el.children).forEach(child => processElement(child));
+          }
+
+          processElement(element);
+          return contentMap;
+        }
+
         const observer = new MutationObserver((mutations) => {
           mutations.forEach((mutation) => {
             if (mutation.type === 'attributes') return;
@@ -828,14 +899,17 @@ console.log('html loaded')
             let relevantHTML;
             let selectorPath = getElementPath(mutation.target);
             let interactiveMap;
+            let contentMap;
             
             if (mutation.type === 'childList') {
               relevantHTML = mutation.target.outerHTML;
               interactiveMap = generateInteractiveMap(mutation.target);
+              contentMap = generateContentMap(mutation.target);
             } else if (mutation.type === 'characterData') {
               relevantHTML = mutation.target.parentNode.outerHTML;
               selectorPath = getElementPath(mutation.target.parentNode);
               interactiveMap = generateInteractiveMap(mutation.target.parentNode);
+              contentMap = generateContentMap(mutation.target.parentNode);
             }
 
             // Check for duplicates...
@@ -851,7 +925,8 @@ console.log('html loaded')
                 type: mutation.type,
                 timestamp: new Date().toISOString(),
                 selectorPath,
-                interactiveMap,  // Add the interactive map to the change object
+                interactiveMap,
+                contentMap,
                 target: {
                   tagName: mutation.target.tagName,
                   id: mutation.target.id,
@@ -866,7 +941,8 @@ console.log('html loaded')
                   className: node.className,
                   html: node.outerHTML || node.textContent || null,
                   selectorPath: node.nodeType === 1 ? getElementPath(node) : null,
-                  interactiveMap: node.nodeType === 1 ? generateInteractiveMap(node) : null  // Add interactive map for added nodes
+                  interactiveMap: node.nodeType === 1 ? generateInteractiveMap(node) : null,
+                  contentMap: node.nodeType === 1 ? generateContentMap(node) : null
                 }));
                 
                 change.removedNodes = Array.from(mutation.removedNodes).map(node => ({
