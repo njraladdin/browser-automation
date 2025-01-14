@@ -703,79 +703,6 @@ console.log('html loaded')
       await page.evaluate(() => {
         window.__domChanges = [];
         
-        // Helper function to generate interactive map for an element
-        function generateInteractiveMap(element) {
-          const interactiveMap = {
-            inputs: [],
-            buttons: [],
-            links: []
-          };
-
-          // Process inputs
-          element.querySelectorAll('input, textarea, select, [type="search"], [contenteditable="true"], [role="searchbox"], [role="textbox"]')
-            .forEach(input => {
-              interactiveMap.inputs.push({
-                type: input.type || input.tagName.toLowerCase(),
-                selector: getElementPath(input),
-                placeholder: input.placeholder,
-                id: input.id,
-                role: input.getAttribute('role'),
-                'aria-label': input.getAttribute('aria-label'),
-                value: input.value,
-                name: input.name
-              });
-            });
-
-          // Process buttons
-          element.querySelectorAll('button, [role="button"]')
-            .forEach(button => {
-              // Get only visible text content, filtering out any hidden elements
-              const visibleText = Array.from(button.childNodes)
-                .filter(node => 
-                  node.nodeType === Node.TEXT_NODE || 
-                  (node.nodeType === Node.ELEMENT_NODE && 
-                   window.getComputedStyle(node).display !== 'none')
-                )
-                .map(node => node.textContent || '')
-                .join('')
-                .trim();
-
-              // Only add buttons that have visible text or aria-label
-              const ariaLabel = button.getAttribute('aria-label');
-              if (visibleText || ariaLabel) {
-                interactiveMap.buttons.push({
-                  text: visibleText,
-                  selector: getElementPath(button),
-                  type: button.type,
-                  id: button.id,
-                  role: button.getAttribute('role'),
-                  'aria-label': ariaLabel,
-                  disabled: button.disabled
-                });
-              }
-            });
-
-          // Process links
-          element.querySelectorAll('a')
-            .forEach(link => {
-              const text = link.textContent.trim();
-              const ariaLabel = link.getAttribute('aria-label');
-              
-              if (!text && !ariaLabel) return;
-
-              interactiveMap.links.push({
-                text: text,
-                href: link.href,
-                selector: getElementPath(link),
-                id: link.id,
-                role: link.getAttribute('role'),
-                'aria-label': ariaLabel
-              });
-            });
-
-          return interactiveMap;
-        }
-
         // Helper function to get element's selector path
         function getElementPath(element) {
           const path = [];
@@ -787,9 +714,8 @@ console.log('html loaded')
             if (currentNode.id) {
               selector = `#${currentNode.id}`;
               path.unshift(selector);
-              break; // If we find an ID, we can stop as it's unique
+              break;
             } else {
-              // Add classes that help identify the element
               const classes = Array.from(currentNode.classList)
                 .filter(cls => 
                   !cls.match(/^(hover|focus|active)/) &&
@@ -803,7 +729,6 @@ console.log('html loaded')
                 selector += '.' + classes.join('.');
               }
               
-              // Add nth-child if needed
               const parent = currentNode.parentNode;
               if (parent) {
                 const siblings = Array.from(parent.children);
@@ -821,98 +746,104 @@ console.log('html loaded')
           return path.join(' > ');
         }
 
-        function generateContentMap(element) {
-          const contentMap = [];
+        // Helper function to generate interactive map
+        function generateInteractiveMap(element) {
+          const interactiveMap = {
+            inputs: [],
+            buttons: [],
+            links: []
+          };
 
-          // Helper function to process text content
-          function processTextContent(text) {
-            return text.trim().replace(/\s+/g, ' ');
-          }
+          // Process inputs
+          element.querySelectorAll('input, textarea, select').forEach(input => {
+            interactiveMap.inputs.push({
+              type: input.type || input.tagName.toLowerCase(),
+              selector: getElementPath(input),
+              placeholder: input.placeholder,
+              id: input.id,
+              role: input.getAttribute('role'),
+              'aria-label': input.getAttribute('aria-label'),
+              value: input.value,
+              name: input.name
+            });
+          });
 
-          // Process all child elements
-          function processElement(el) {
-            // Skip script and style tags
-            if (['script', 'style', 'noscript'].includes(el.tagName.toLowerCase())) {
+          // Process buttons
+          element.querySelectorAll('button, [role="button"]').forEach(button => {
+            interactiveMap.buttons.push({
+              text: button.textContent.trim(),
+              selector: getElementPath(button),
+              type: button.type,
+              id: button.id,
+              role: button.getAttribute('role'),
+              'aria-label': button.getAttribute('aria-label'),
+              disabled: button.disabled
+            });
+          });
+
+          // Process links
+          element.querySelectorAll('a').forEach(link => {
+            const text = link.textContent.trim();
+            const ariaLabel = link.getAttribute('aria-label');
+            
+            if (!text && !ariaLabel) return;
+
+            interactiveMap.links.push({
+              text: text,
+              href: link.href,
+              selector: getElementPath(link),
+              id: link.id,
+              role: link.getAttribute('role'),
+              'aria-label': ariaLabel
+            });
+          });
+
+          return interactiveMap;
+        }
+
+        // Now the observer code...
+        const observer = new MutationObserver((mutations) => {
+          console.log('Mutation detected:', mutations.length, 'changes');
+          console.log('Mutations:', mutations.map(m => ({
+            type: m.type,
+            target: m.target.tagName,
+            addedNodes: m.addedNodes?.length,
+            removedNodes: m.removedNodes?.length
+          })));
+
+          mutations.forEach((mutation) => {
+            // Skip style/script changes
+            if (mutation.target.tagName === 'STYLE' || 
+                mutation.target.tagName === 'SCRIPT' || 
+                mutation.target.tagName === 'LINK') {
+              console.log('Skipping style/script mutation');
               return;
             }
 
-            // Get direct text content (excluding child elements)
-            const directText = processTextContent(
-              Array.from(el.childNodes)
-                .filter(node => node.nodeType === Node.TEXT_NODE)
-                .map(node => node.textContent)
-                .join(' ')
-            );
-
-            if (directText) {
-              contentMap.push({
-                type: 'text',
-                content: directText,
-                tag: el.tagName.toLowerCase(),
-                selector: getElementPath(el)
-              });
+            if (mutation.type === 'attributes') {
+              console.log('Skipping attribute mutation');
+              return;
             }
-
-            // Handle media elements
-            if (el.tagName.toLowerCase() === 'img') {
-              contentMap.push({
-                type: 'media',
-                mediaType: 'image',
-                src: el.getAttribute('src'),
-                alt: el.getAttribute('alt'),
-                selector: getElementPath(el)
-              });
-            } else if (el.tagName.toLowerCase() === 'video') {
-              contentMap.push({
-                type: 'media',
-                mediaType: 'video',
-                src: el.getAttribute('src'),
-                poster: el.getAttribute('poster'),
-                selector: getElementPath(el)
-              });
-            }
-
-            // Handle structural elements
-            const isStructural = ['main', 'article', 'section', 'header', 'footer', 'nav', 'aside'].includes(el.tagName.toLowerCase());
-            if (isStructural) {
-              contentMap.push({
-                type: 'structure',
-                tag: el.tagName.toLowerCase(),
-                role: el.getAttribute('role'),
-                selector: getElementPath(el),
-                'aria-label': el.getAttribute('aria-label')
-              });
-            }
-
-            // Process child elements recursively
-            Array.from(el.children).forEach(child => processElement(child));
-          }
-
-          processElement(element);
-          return contentMap;
-        }
-
-        const observer = new MutationObserver((mutations) => {
-          mutations.forEach((mutation) => {
-            if (mutation.type === 'attributes') return;
 
             let relevantHTML;
             let selectorPath = getElementPath(mutation.target);
             let interactiveMap;
-            let contentMap;
             
             if (mutation.type === 'childList') {
+              console.log('ChildList mutation:', {
+                addedNodes: mutation.addedNodes.length,
+                removedNodes: mutation.removedNodes.length
+              });
               relevantHTML = mutation.target.outerHTML;
               interactiveMap = generateInteractiveMap(mutation.target);
-              contentMap = generateContentMap(mutation.target);
             } else if (mutation.type === 'characterData') {
+              console.log('CharacterData mutation');
               relevantHTML = mutation.target.parentNode.outerHTML;
               selectorPath = getElementPath(mutation.target.parentNode);
               interactiveMap = generateInteractiveMap(mutation.target.parentNode);
-              contentMap = generateContentMap(mutation.target.parentNode);
             }
 
-            // Check for duplicates...
+            // Check for duplicates
             const isDuplicate = window.__domChanges.some(existingChange => {
               const existingHTML = existingChange.containerHTML || 
                                  existingChange.elementHTML || 
@@ -921,12 +852,12 @@ console.log('html loaded')
             });
 
             if (!isDuplicate) {
-              let change = {
+              const change = {
                 type: mutation.type,
                 timestamp: new Date().toISOString(),
                 selectorPath,
                 interactiveMap,
-                contentMap,
+                html: relevantHTML,
                 target: {
                   tagName: mutation.target.tagName,
                   id: mutation.target.id,
@@ -941,8 +872,7 @@ console.log('html loaded')
                   className: node.className,
                   html: node.outerHTML || node.textContent || null,
                   selectorPath: node.nodeType === 1 ? getElementPath(node) : null,
-                  interactiveMap: node.nodeType === 1 ? generateInteractiveMap(node) : null,
-                  contentMap: node.nodeType === 1 ? generateContentMap(node) : null
+                  interactiveMap: node.nodeType === 1 ? generateInteractiveMap(node) : null
                 }));
                 
                 change.removedNodes = Array.from(mutation.removedNodes).map(node => ({
@@ -964,7 +894,6 @@ console.log('html loaded')
           });
         });
 
-        // Start observing
         observer.observe(document.body, {
           childList: true,
           characterData: true,
@@ -978,18 +907,35 @@ console.log('html loaded')
       // Set up periodic collection of changes
       this.changeCollectionInterval = setInterval(async () => {
         const changes = await page.evaluate(() => {
+          console.log('Current changes:', window.__domChanges.length); // Browser console
           const currentChanges = window.__domChanges;
-          window.__domChanges = []; // Clear the changes array
+          window.__domChanges = []; 
           return currentChanges;
         });
 
+
         if (changes && changes.length > 0) {
-          this.latestDOMChanges.push(...changes);
-          
-      
-          await this.logChangesToFile(changes);
+          try {
+            console.log('Processing changes...');
+            const processedChanges = changes.map(change => {
+              const $ = cheerio.load(change.html || change.containerHTML);
+              const contentMap = this._generateContentMapFromCheerio($, change.shadowDOM, change.iframeData);
+              return {
+                ...change,
+                contentMap
+              };
+            });
+
+            this.latestDOMChanges.push(...processedChanges);
+            console.log(`Saving ${processedChanges.length} changes to file...`);
+            await this.logChangesToFile(processedChanges);
+          } catch (error) {
+            console.error('Error processing changes:', error);
+            console.log('Saving original changes instead...');
+            await this.logChangesToFile(changes);
+          }
         }
-      }, 1000); // Collect changes every second
+      }, 1000);
 
       console.log('DOM observer started successfully');
     } catch (error) {
@@ -1024,13 +970,16 @@ console.log('html loaded')
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const logPath = path.join(testDir, `dom_changes_${timestamp}.json`);
 
-      fs.appendFileSync(
+      console.log(`Writing to ${logPath}`);
+      fs.writeFileSync(
         logPath,
-        JSON.stringify(changes, null, 2) + '\n',
+        JSON.stringify(changes, null, 2),
         'utf8'
       );
+      console.log('File written successfully');
     } catch (error) {
       console.error('Failed to log DOM changes:', error);
+      console.error(error.stack);
     }
   }
 
@@ -1039,7 +988,20 @@ console.log('html loaded')
   }
 
   async generateContentMap(page) {
-    const contentMap = [];
+    const contentMap = await this._generateContentMapFromCheerio(
+      this.$, 
+      this.snapshot.shadowDOM,
+      this.snapshot.iframeData
+    );
+    
+    // Store the content map in the snapshot before returning
+    this.snapshot.content = contentMap;
+    
+    return contentMap;
+  }
+
+  _generateContentMapFromCheerio($, shadowDOM = null, iframeData = null) {
+    let contentMap = [];
     
     // Helper function to process selector
     const processSelector = (originalSelector) => {
@@ -1057,8 +1019,8 @@ console.log('html loaded')
     };
 
     // Process main document
-    this.$('body *').each((_, element) => {
-      const $el = this.$(element);
+    $('body *').each((_, element) => {
+      const $el = $(element);
       
       if (['script', 'style', 'noscript'].includes(element.tagName.toLowerCase())) {
         return;
@@ -1118,77 +1080,38 @@ console.log('html loaded')
     });
 
     // Process shadow DOM content
-    if (this.snapshot.shadowDOM) {
-      this.snapshot.shadowDOM.forEach(shadowTree => {
+    if (shadowDOM) {
+      shadowDOM.forEach(shadowTree => {
         const $shadow = cheerio.load(shadowTree.content);
-        const currentPath = `${shadowTree.hostElement.tagName} > shadow-root`;
+        const shadowContentMap = this._generateContentMapFromCheerio($shadow);
         
-        $shadow('*').each((_, element) => {
-          const $el = $shadow(element);
-          const directText = processTextContent($el.clone().children().remove().end().text());
-          
-          if (directText) {
-            const originalSelector = `${shadowTree.hostElement.tagName} > shadow-root > ${this.generateSelector($el)}`;
-            const selector = processSelector(originalSelector);
-            
-            contentMap.push({
-              type: 'text',
-              content: directText,
-              tag: element.tagName.toLowerCase(),
-              selector: selector,
-              shadowPath: `${currentPath} > ${element.tagName.toLowerCase()}`
-            });
-          }
-          
-          if (element.tagName.toLowerCase() === 'img') {
-            const originalSelector = `${shadowTree.hostElement.tagName} > shadow-root > ${this.generateSelector($el)}`;
-            const selector = processSelector(originalSelector);
-            
-            contentMap.push({
-              type: 'media',
-              mediaType: 'image',
-              src: $el.attr('src'),
-              alt: $el.attr('alt'),
-              selector: selector,
-              shadowPath: `${currentPath} > ${element.tagName.toLowerCase()}`
-            });
-          }
+        // Add shadow path to each item
+        const currentPath = `${shadowTree.hostElement.tagName} > shadow-root`;
+        shadowContentMap.forEach(item => {
+          item.shadowPath = `${currentPath} > ${item.tag}`;
+          item.selector = `${shadowTree.hostElement.tagName} > shadow-root > ${item.selector}`;
         });
+        
+        contentMap = contentMap.concat(shadowContentMap);
       });
     }
 
     // Process iframe content
-    if (this.snapshot.iframeData) {
-      this.snapshot.iframeData.forEach(iframe => {
+    if (iframeData) {
+      iframeData.forEach(iframe => {
         const $iframe = cheerio.load(iframe.content);
+        const iframeContentMap = this._generateContentMapFromCheerio($iframe);
         
-        $iframe('*').each((_, element) => {
-          const $el = $iframe(element);
-          
-          // Add this check to skip script tags in iframes
-          if (['script', 'style', 'noscript'].includes(element.tagName.toLowerCase())) {
-            return;
-          }
-
-          const directText = processTextContent($el.clone().children().remove().end().text());
-          
-          if (directText) {
-            const originalSelector = `iframe[src="${iframe.src}"] > ${this.generateSelector($el)}`;
-            const selector = processSelector(originalSelector);
-            
-            contentMap.push({
-              type: 'text',
-              content: directText,
-              tag: element.tagName.toLowerCase(),
-              selector: selector,
-              iframePath: `iframe[src="${iframe.src}"] > ${element.tagName.toLowerCase()}`
-            });
-          }
+        // Add iframe path to each item
+        iframeContentMap.forEach(item => {
+          item.iframePath = `iframe[src="${iframe.src}"] > ${item.tag}`;
+          item.selector = `iframe[src="${iframe.src}"] > ${item.selector}`;
         });
+        
+        contentMap = contentMap.concat(iframeContentMap);
       });
     }
 
-    this.snapshot.content = contentMap;
     return contentMap;
   }
 
