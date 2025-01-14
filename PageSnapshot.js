@@ -12,6 +12,7 @@ class PageSnapshot {
       url: null,
       html: null,
       interactive: null,
+      content: null,
       timestamp: null,
       textView: null
     };
@@ -106,6 +107,9 @@ class PageSnapshot {
       // Generate analysis data
       const { view: interactiveView } = await this.generateInteractiveView(page);
       this.snapshot.interactive = interactiveView;
+      
+      // Generate content map
+      await this.generateContentMap(page);
       
       // Set timestamp
       this.snapshot.timestamp = new Date().toISOString();
@@ -333,21 +337,32 @@ class PageSnapshot {
     };
   }
 
+  sanitizeSelector(selector) {
+    if (!selector) return selector;
+    
+    return selector
+      .replace(/[^\w-]/g, '_') // Replace any non-word chars (except hyphens) with underscore
+      .replace(/^(\d)/, '_$1') // Prefix with underscore if starts with number
+      .replace(/\\/g, '\\\\') // Escape backslashes
+      .replace(/'/g, "\\'")   // Escape single quotes
+      .replace(/"/g, '\\"')   // Escape double quotes
+      .replace(/\//g, '_')    // Replace forward slashes with underscore
+      .replace(/:/g, '_')     // Replace colons with underscore
+      .replace(/\./g, '_')    // Replace dots with underscore when not part of a class selector
+      .replace(/\s+/g, '_');  // Replace whitespace with underscore
+  }
+
   generateSelector($el) {
     const id = $el.attr('id');
-    if (id && this.$(`#${id}`).length === 1) return `#${id}`;
+    if (id) {
+      const safeId = this.sanitizeSelector(id);
+      if (safeId && this.$(`#${safeId}`).length === 1) return `#${safeId}`;
+    }
 
     // Build the full path from the element up to a unique ancestor or root
     const path = [];
     let current = $el;
     let foundUniqueAncestor = false;
-
-    // Helper to sanitize class names
-    const sanitizeClassName = (className) => {
-      return className
-        .replace(/[^\w-]/g, '_') // Replace any non-word chars (except hyphens) with underscore
-        .replace(/^(\d)/, '_$1'); // Prefix with underscore if starts with number
-    };
 
     while (current.length && !foundUniqueAncestor) {
       let selector = current[0].tagName.toLowerCase();
@@ -355,7 +370,8 @@ class PageSnapshot {
       // Add id if present
       const currentId = current.attr('id');
       if (currentId) {
-        selector = `#${sanitizeClassName(currentId)}`;
+        const safeId = this.sanitizeSelector(currentId);
+        selector = `#${safeId}`;
         foundUniqueAncestor = true;
       } else {
         // Add classes that help identify the element
@@ -370,9 +386,11 @@ class PageSnapshot {
               !cls.includes(')') &&
               !cls.includes('[') &&
               !cls.includes(']') &&
-              !cls.includes('\\')
+              !cls.includes('\\') &&
+              !cls.includes('/') &&
+              !cls.includes(':')
             )
-            .map(sanitizeClassName);
+            .map(cls => this.sanitizeSelector(cls));
 
           if (safeClasses.length) {
             selector += '.' + safeClasses.join('.');
@@ -393,18 +411,19 @@ class PageSnapshot {
         }
       }
 
+      // Validate selector before adding it
       try {
-        // Test if the selector is valid before adding it
         this.$(selector);
         path.unshift(selector);
       } catch (e) {
-        // If invalid, fall back to basic tag selector
-        path.unshift(current[0].tagName.toLowerCase());
+        // If invalid, fall back to basic tag selector with nth-child
+        const index = current.parent().children().index(current) + 1;
+        path.unshift(`${current[0].tagName.toLowerCase()}:nth-child(${index})`);
       }
 
       current = current.parent();
 
-      // Try to find a unique ancestor, but with error handling
+      // Check if we've found a unique ancestor
       try {
         if (current.length && path.length > 0) {
           const testSelector = path.join(' > ');
@@ -413,15 +432,17 @@ class PageSnapshot {
           }
         }
       } catch (e) {
-        // If the selector is invalid, continue with the next iteration
         continue;
       }
     }
 
+    // Final validation of the complete selector
     try {
-      return path.join(' > ');
+      const finalSelector = path.join(' > ');
+      this.$(finalSelector); // Test if valid
+      return finalSelector;
     } catch (e) {
-      // Fallback to a very basic selector if everything else fails
+      // Ultimate fallback - just return a very basic selector
       return `${$el[0].tagName.toLowerCase()}:nth-child(${$el.parent().children().index($el) + 1})`;
     }
   }
@@ -474,6 +495,18 @@ class PageSnapshot {
     fs.writeFileSync(
       path.join(testDir, `text_view_${timestamp}.txt`),
       textViewContent,
+      'utf8'
+    );
+
+    // Create a copy of content map with both selectors
+    const contentWithSelectors = this.snapshot.content.map(item => ({
+      ...item,
+      originalSelector: this.selectorToOriginalMap.get(item.selector) || item.selector
+    }));
+
+    fs.writeFileSync(
+      path.join(testDir, `content_${timestamp}.json`),
+      JSON.stringify(contentWithSelectors, null, 2),
       'utf8'
     );
 
@@ -928,6 +961,164 @@ console.log('html loaded')
   getLatestDOMChanges() {
     return this.latestDOMChanges;
   }
+
+  async generateContentMap(page) {
+    const contentMap = [];
+    
+    // Helper function to process selector
+    const processSelector = (originalSelector) => {
+      if (originalSelector.length <= 500) {
+        return originalSelector;
+      }
+      const shortSelector = `__SELECTOR__${++this.selectorCounter}`;
+      this.selectorToOriginalMap.set(shortSelector, originalSelector);
+      return shortSelector;
+    };
+
+    // Helper function to process text content
+    const processTextContent = (text) => {
+      return text.trim().replace(/\s+/g, ' ');
+    };
+
+    // Process main document
+    this.$('body *').each((_, element) => {
+      const $el = this.$(element);
+      
+      if (['script', 'style', 'noscript'].includes(element.tagName.toLowerCase())) {
+        return;
+      }
+
+      const directText = processTextContent($el.clone().children().remove().end().text());
+      
+      if (directText) {
+        const originalSelector = this.generateSelector($el);
+        const selector = processSelector(originalSelector);
+        
+        contentMap.push({
+          type: 'text',
+          content: directText,
+          tag: element.tagName.toLowerCase(),
+          selector: selector
+        });
+      }
+
+      if (element.tagName.toLowerCase() === 'img') {
+        const originalSelector = this.generateSelector($el);
+        const selector = processSelector(originalSelector);
+        
+        contentMap.push({
+          type: 'media',
+          mediaType: 'image',
+          src: $el.attr('src'),
+          alt: $el.attr('alt'),
+          selector: selector
+        });
+      } else if (element.tagName.toLowerCase() === 'video') {
+        const originalSelector = this.generateSelector($el);
+        const selector = processSelector(originalSelector);
+        
+        contentMap.push({
+          type: 'media',
+          mediaType: 'video',
+          src: $el.attr('src'),
+          poster: $el.attr('poster'),
+          selector: selector
+        });
+      }
+
+      const isStructural = ['main', 'article', 'section', 'header', 'footer', 'nav', 'aside'].includes(element.tagName.toLowerCase());
+      if (isStructural) {
+        const originalSelector = this.generateSelector($el);
+        const selector = processSelector(originalSelector);
+        
+        contentMap.push({
+          type: 'structure',
+          tag: element.tagName.toLowerCase(),
+          role: $el.attr('role'),
+          selector: selector,
+          'aria-label': $el.attr('aria-label')
+        });
+      }
+    });
+
+    // Process shadow DOM content
+    if (this.snapshot.shadowDOM) {
+      this.snapshot.shadowDOM.forEach(shadowTree => {
+        const $shadow = cheerio.load(shadowTree.content);
+        const currentPath = `${shadowTree.hostElement.tagName} > shadow-root`;
+        
+        $shadow('*').each((_, element) => {
+          const $el = $shadow(element);
+          const directText = processTextContent($el.clone().children().remove().end().text());
+          
+          if (directText) {
+            const originalSelector = `${shadowTree.hostElement.tagName} > shadow-root > ${this.generateSelector($el)}`;
+            const selector = processSelector(originalSelector);
+            
+            contentMap.push({
+              type: 'text',
+              content: directText,
+              tag: element.tagName.toLowerCase(),
+              selector: selector,
+              shadowPath: `${currentPath} > ${element.tagName.toLowerCase()}`
+            });
+          }
+          
+          if (element.tagName.toLowerCase() === 'img') {
+            const originalSelector = `${shadowTree.hostElement.tagName} > shadow-root > ${this.generateSelector($el)}`;
+            const selector = processSelector(originalSelector);
+            
+            contentMap.push({
+              type: 'media',
+              mediaType: 'image',
+              src: $el.attr('src'),
+              alt: $el.attr('alt'),
+              selector: selector,
+              shadowPath: `${currentPath} > ${element.tagName.toLowerCase()}`
+            });
+          }
+        });
+      });
+    }
+
+    // Process iframe content
+    if (this.snapshot.iframeData) {
+      this.snapshot.iframeData.forEach(iframe => {
+        const $iframe = cheerio.load(iframe.content);
+        
+        $iframe('*').each((_, element) => {
+          const $el = $iframe(element);
+          
+          // Add this check to skip script tags in iframes
+          if (['script', 'style', 'noscript'].includes(element.tagName.toLowerCase())) {
+            return;
+          }
+
+          const directText = processTextContent($el.clone().children().remove().end().text());
+          
+          if (directText) {
+            const originalSelector = `iframe[src="${iframe.src}"] > ${this.generateSelector($el)}`;
+            const selector = processSelector(originalSelector);
+            
+            contentMap.push({
+              type: 'text',
+              content: directText,
+              tag: element.tagName.toLowerCase(),
+              selector: selector,
+              iframePath: `iframe[src="${iframe.src}"] > ${element.tagName.toLowerCase()}`
+            });
+          }
+        });
+      });
+    }
+
+    this.snapshot.content = contentMap;
+    return contentMap;
+  }
+
+  getContentMap() { 
+    return this.snapshot.content; 
+  }
 }
 
 module.exports = PageSnapshot;
@@ -939,7 +1130,7 @@ if (require.main === module) {
   (async () => {
     let browser;
     try {
-      const url = 'https://google.com';
+      const url = 'https://www.anonyig.com';
       console.log(`Testing PageSnapshot with URL: ${url}`);
 
       console.log('Launching browser...');
@@ -962,23 +1153,12 @@ if (require.main === module) {
       console.log('\nSnapshot captured successfully!');
       console.log('Files saved with timestamp:', result.timestamp);
       
-      // Wait some time to collect post-snapshot changes
-      console.log('\nWaiting 10 seconds to collect DOM changes...');
-      await new Promise(resolve => setTimeout(resolve, 10000));
-      
-      // Stop the observer and get final changes
-      await snapshot.stopDOMObserver(page);
-      console.log('\nDOM Changes detected after snapshot:', snapshot.getLatestDOMChanges().length);
-      console.log('\nDebug files location:', path.join(__dirname, 'test'));
-
+   
     } catch (error) {
       console.error('Test failed:', error);
       process.exit(1);
     } finally {
-      if (browser) {
-        await browser.close();
-        console.log('\nBrowser closed. Test complete!');
-      }
+     
     }
   })();
 } 
