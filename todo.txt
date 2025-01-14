@@ -70,17 +70,33 @@ allow ai to colelct data and push it to frontend, nto just the extract function,
 
 
 run each benchmark, troubleshoot and improve :
-- go to anonymiosu instagram stories, and get latest stories :
+- go to anonymiosu instagram stories, open each story modal and get all stories posts :
     Problem: buttons do not have text, and AI is choosing wrong button selector to submit search, DONE 
     Solutions: - send image of page and label each element. - add nearby text to each element
 
-    Problem: an error might face the scritp while running due to some change in page structure. 
-    Solutions: when cathcing an error, resend the script to gemini with error message and new pash snapshot, and update script 
+    Problem: an error might face the scritp while running due to some change in page structure
+    Problem: it clicks on wrong elements 
+    Solutions: 
+    -when catching an error, resend the script to gemini with error message and new snapshot, and update script . 
 
+    - the step should be split into  actions, and gemini would be able to see the result of each action, like a real person
 
+    - give labeled screenshots to gemini after every action 
 
+    - don't generate the full script at once. isntead it generates first action, it runs it, then gemini sees the result, then gemini generates the next action, and so on. 
+    result include snbapshot and also screenshot
 
+    - implement an AI inspector betwene each item, where after every action, it reviews the website and check if it's well, then it let it move forward, otherwise it udpates the code then continues form where it left off. 
+  
+    - simpler: generate first action, review output and website, then generate next action, and so on. 
 
+    - make the automation code itself also use AI, so not simply autoamtion oc,dde but lawasy relies on ai . MOR RELIANT ON AI 
+
+    -send sreenshot of page 
+
+    -send screenshots of parts of the page you're talking about 
+
+    - send pagehtml 
 
 
 benchmarks: 
@@ -88,3 +104,10 @@ benchmarks:
 - go to anonymiosu instagram stories, and get latest stories 
 - go to twitter profile, and extract list of tweets until you get 100
 - go to airbnb, search a destination, then extract all data for each pagination page
+
+
+oh the AI only gets the page snapshot (html , interactive elements) once at the beginning, so thne he goes to open the modal and he deosnt know the exact html of the modal. but he does have acess to previous code. doesn't he have access to this line from previsou code: 
+    const imgElement = document.querySelector('.media-modal__content img');
+
+
+which he could use to detect ht modal? i meant from the preivous code he literally did this corectly ? 

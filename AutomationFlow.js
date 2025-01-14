@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const util = require('util');
 const fsPromises = require('fs').promises;
+const clc = require('cli-color');
 
 class AutomationFlow {
   constructor() {
@@ -34,7 +35,7 @@ class AutomationFlow {
 
     this.browserInitializing = (async () => {
       try {
-        console.log('Launching browser...');
+        console.log(clc.cyan('▶ Launching browser...'));
         this.browser = await puppeteer.launch({ 
           headless: false,
           defaultViewport: {
@@ -44,16 +45,17 @@ class AutomationFlow {
         });
         this.page = await this.browser.newPage();
         
-        console.log('Navigating to initial URL...');
+        console.log(clc.cyan('▶ Navigating to initial URL...'));
         try {
           await this.page.goto(this.INITIAL_URL, { waitUntil: 'networkidle0' });
+          console.log(clc.green('✓ Page loaded successfully'));
         } catch (navigationError) {
           throw new Error(`Failed to load initial page: ${navigationError.message}`);
         }
         
         return { browser: this.browser, page: this.page };
       } catch (error) {
-        console.error('Failed to launch browser:', error);
+        console.log(clc.red('✗ Browser initialization failed:'), error.message);
         this.browser = null;
         this.page = null;
         throw error;
@@ -81,6 +83,8 @@ class AutomationFlow {
 
   async addAutomationStep(instructions, statusEmitter = () => {}) {
     try {
+      console.log(clc.cyan('\n▶ Adding new automation step:'), instructions);
+      
       statusEmitter({ 
         message: 'Generating code for new step...', 
         type: 'executing', 
@@ -156,7 +160,7 @@ Requirements:
   use promise for waiting instead of waitForTimeout
 - For regular elements: use normal page methods with minimal selectors
 - keep in mind that the code would probably be ran again, but not with the exact elements content or elements number (like listings etc.), so use selectors smartly 
-
+- write code in SLOW MODE, meaning impelment generous delays and waiting for elements to load, so that it's safer and also the user more easily to follow the execution when running
 Example using element with shadowPath:
 try {
   console.log('Typing in input field');
@@ -253,11 +257,70 @@ IMPORTANT:
 - This applies to both parseTextViewWithAI results and any custom data collection
 - The extractedData can be any type of data structure (object, array, string, etc.)
 
+For dynamic content (like modals, popups, or any new elements that appear after user actions):
+
+WHY USE findSelectorInLatestDomChanges()?
+- The interactive map only contains selectors for elements that existed when the page was first loaded
+- When new content appears dynamically (like modals), these elements aren't in our original map
+- The function analyzes recent DOM changes to find and generate reliable selectors for these new elements
+- It uses AI to understand your description and find the right element in the recent changes
+- Without this function, you'd have no reliable way to get selectors for dynamic content
+
+Use findSelectorInLatestDomChanges() to get selectors for elements that appear dynamically (like in modals, popups, etc). Here's how to use it:
+
+Example using dynamic content with findSelectorInLatestDomChanges():
+try {
+  // Example 1: Handling a dropdown menu
+  console.log('Opening dropdown menu...');
+  await page.click('.menu-trigger');
+  
+  await new Promise(resolve => setTimeout(resolve, 2000));
+  
+  const menuItemSelector = await findSelectorInLatestDomChanges(
+    'the actual clickable link/button element (not its container) in the dropdown that says "Settings"'
+  );
+  await page.click(menuItemSelector);
+
+  // Example 2: Handling a notification
+  const notificationTextSelector = await findSelectorInLatestDomChanges(
+    'the actual text element (p or span tag) containing the notification message'
+  );
+  const message = await page.$eval(notificationTextSelector, el => el.textContent);
+console.log(message)
+  // Example 3: Handling a search autocomplete
+  await page.type('.search-input', 'test');
+  await new Promise(resolve => setTimeout(resolve, 2000));
+  
+  const suggestionSelector = await findSelectorInLatestDomChanges(
+    'the actual clickable suggestion element (li or div tag) from the autocomplete dropdown'
+  );
+  await page.click(suggestionSelector);
+
+  return {
+    success: true,
+    extractedData: {
+      notification: message,
+      // other data...
+    }
+  };
+} catch (error) {
+  console.error('Failed:', error);
+  throw error;
+}
+IMPORTANT: 
+- Use findSelectorInLatestDomChanges() for ANY elements that appear after page changes (modals, popups, dynamic content)
+- Always add a 2-second delay after the action that causes DOM changes
+- The function returns a selector you can use with normal page methods (click, $eval, etc)
+- For elements that were present when the page loaded, use the selectors from the interactive map instead
+
 Current Page URL: ${snapshot.url}
 -you can use the given interactive elements map where you are provided each element on the page and it's selector so you can interact with them. Use the selectors exactly as they appear in the 'selector' field (in format __SELECTOR__N). DO NOT MODIFY THE SELECTORS. use the interactive map as a guide.
 
 Interactive map:
 ${JSON.stringify(snapshot.interactive, null, 2)}
+
+page html:
+${snapshot.html}
 
 Previous automation steps:
 ${previousSteps ? `Previous automation steps:
@@ -296,9 +359,11 @@ User Instructions: ${instructions}`;
       
       console.log('Code after selector replacement:', code);
       
-      console.log({code});
       
       // After generating the code, immediately execute it
+      console.log(clc.cyan('▶ Generated code length:'), code.length);
+      console.log(clc.cyan('▶ Executing generated code...'));
+
       const stepIndex = this.automationSteps.length;
       this.automationSteps.push({ 
         instructions, 
@@ -306,13 +371,14 @@ User Instructions: ${instructions}`;
         screenshot: null
       });
 
-      // Execute the newly added step
       const executionResult = await this.executeSingleStep(stepIndex, statusEmitter);
       
       if (!executionResult.success) {
+        console.log(clc.red('✗ Step execution failed:'), executionResult.error);
         throw new Error(executionResult.error);
       }
-      
+
+      console.log(clc.green('✓ Step added and executed successfully'));
       return { 
         success: true, 
         code,
@@ -321,7 +387,7 @@ User Instructions: ${instructions}`;
         extractedData: this.automationSteps[stepIndex].extractedData
       };
     } catch (error) {
-      console.error('Failed to add and execute step:', error);
+      console.log(clc.red('✗ Failed to add automation step:'), error.message);
       statusEmitter({ 
         message: `Failed: ${error.message}`, 
         type: 'error', 
@@ -333,6 +399,8 @@ User Instructions: ${instructions}`;
 
   async parseTextViewWithAI(structurePrompt) {
     try {
+      console.log(clc.cyan('▶ Starting AI text parsing...'));
+      
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
         throw new Error('GEMINI_API_KEY not found in environment variables');
@@ -426,28 +494,30 @@ User Instructions: ${instructions}`;
       );
 
       try {
-        return JSON.parse(parsedText);
+        const result = JSON.parse(parsedText);
+        console.log(clc.green('✓ Successfully parsed text with AI'));
+        return result;
       } catch (e) {
-        console.warn('Warning: AI response was not valid JSON, returning raw text');
+        console.log(clc.yellow('⚠ AI response was not valid JSON, returning raw text'));
         return parsedText;
       }
 
     } catch (error) {
-      console.error('Failed to parse text with AI:', error);
+      console.log(clc.red('✗ Text parsing failed:'), error.message);
       throw error;
     }
   }
 
   async executeCurrentSteps() {
     try {
-      console.log('[AutomationFlow] Starting execution of steps');
-      console.log('[AutomationFlow] Last executed step:', this.lastExecutedStep);
+      console.log(clc.cyan('\n▶ Starting execution of all steps'));
+      console.log(clc.cyan(`▶ Total steps: ${this.automationSteps.length}, Starting from: ${this.lastExecutedStep + 1}`));
       
       const startIndex = (typeof this.lastExecutedStep === 'number' ? this.lastExecutedStep : -1) + 1;
       console.log('[AutomationFlow] Starting from index:', startIndex);
       
       for (let i = startIndex; i < this.automationSteps.length; i++) {
-        console.log(`[AutomationFlow] Executing step ${i}:`);
+        console.log(clc.cyan(`\n▶ Executing step ${i + 1}/${this.automationSteps.length}:`), this.automationSteps[i].instructions);
         
         const statusEmitter = (status) => {
           if (this.statusCallback) {
@@ -464,6 +534,7 @@ User Instructions: ${instructions}`;
 
         const result = await this.executeSingleStep(i, statusEmitter);
         if (!result.success) {
+          console.log(clc.red('✗ Step execution failed:'), result.error);
           statusEmitter({
             message: result.error,
             type: 'error',
@@ -493,6 +564,7 @@ User Instructions: ${instructions}`;
         screenshot: step.screenshot
       }));
 
+      console.log(clc.green('\n✓ All steps executed successfully'));
       console.log('[AutomationFlow] Execution completed. Last executed step:', this.lastExecutedStep);
 
       return { 
@@ -501,7 +573,7 @@ User Instructions: ${instructions}`;
         steps: updatedSteps
       };
     } catch (error) {
-      console.error('[AutomationFlow] Execution failed:', error);
+      console.log(clc.red('✗ Steps execution failed:'), error.message);
       return { success: false, error: error.message };
     }
   }
@@ -547,15 +619,15 @@ User Instructions: ${instructions}`;
 
   async executeSingleStep(stepIndex, statusEmitter = () => {}) {
     try {
-      // Emit starting status
-      statusEmitter({ 
-        message: 'Starting step execution...', 
-        type: 'executing', 
-        stepIndex 
-      });
-
+      console.log(clc.cyan(`\n▶ Executing step ${stepIndex + 1}`));
+ // Emit starting status
+ statusEmitter({ 
+  message: 'Starting step execution...', 
+  type: 'executing', 
+  stepIndex 
+});
       if (!this.browser || !this.page) {
-        statusEmitter({ message: 'Initializing browser...', type: 'info', stepIndex });
+        console.log(clc.cyan('▶ Browser not initialized, initializing...'));
         try {
           await this.initBrowser();
         } catch (browserError) {
@@ -564,6 +636,7 @@ User Instructions: ${instructions}`;
             type: 'error', 
             stepIndex 
           });
+          console.log(clc.red('✗ Browser initialization failed:'), browserError.message);
           throw browserError;
         }
       }
@@ -584,13 +657,18 @@ User Instructions: ${instructions}`;
       const stepFunction = new Function(
         'page', 
         'parseTextViewWithAI',
-        `return (async (page, parseTextViewWithAI) => {
+        'findSelectorInLatestDomChanges',
+        `return (async (page, parseTextViewWithAI, findSelectorInLatestDomChanges) => {
           ${step.code}
-        })(page, parseTextViewWithAI)`
+        })(page, parseTextViewWithAI, findSelectorInLatestDomChanges)`
       );
 
       try {
-        const result = await stepFunction(this.page, this.parseTextViewWithAI.bind(this));
+        const result = await stepFunction(
+          this.page, 
+          this.parseTextViewWithAI.bind(this),
+          this.findSelectorInLatestDomChanges.bind(this)
+        );
         // If the result contains extractedData, store it in the step
         if (result && result.success && result.extractedData) {
           this.automationSteps[stepIndex].extractedData = result.extractedData;
@@ -612,15 +690,16 @@ User Instructions: ${instructions}`;
       await this.delay(1000);
 
       try {
-        statusEmitter({ message: 'Capturing screenshot...', type: 'info', stepIndex });
+        console.log(clc.cyan('▶ Capturing step screenshot...'));
         const screenshot = await this.page.screenshot({
           encoding: 'base64',
           type: 'jpeg',
           quality: 80
         });
         this.automationSteps[stepIndex].screenshot = `data:image/jpeg;base64,${screenshot}`;
+        console.log(clc.green('✓ Screenshot captured'));
       } catch (screenshotError) {
-        console.error('Failed to capture screenshot:', screenshotError);
+        console.log(clc.yellow('⚠ Failed to capture screenshot:'), screenshotError.message);
       }
 
       const updatedSteps = this.automationSteps.map(step => ({
@@ -630,14 +709,115 @@ User Instructions: ${instructions}`;
         screenshot: step.screenshot
       }));
 
+      console.log(clc.green('✓ Step execution completed'));
       return { 
         success: true, 
         lastExecutedStep: this.lastExecutedStep,
         steps: updatedSteps
       };
     } catch (error) {
-      console.error('Step execution failed:', error);
+      console.log(clc.red('✗ Step execution failed:'), error.message);
       return { success: false, error: error.message };
+    }
+  }
+
+  async findSelectorInLatestDomChanges(description) {
+    try {
+      console.log(clc.cyan('\n▶ Finding selector for:'), description);
+
+      const latestChanges = this.pageSnapshot.getLatestDOMChanges();
+      console.log(clc.cyan(`▶ Found ${latestChanges.length} DOM changes`));
+
+      if (!latestChanges || latestChanges.length === 0) {
+        console.log(clc.red('✗ No DOM changes tracked'));
+        throw new Error('No DOM changes tracked');
+      }
+
+      // Log a summary of the changes
+      console.log('\nLatest Changes Summary:');
+      latestChanges.forEach((change, index) => {
+        console.log(`\nChange ${index + 1}:`);
+        console.log('- Type:', change.type);
+        console.log('- Selector Path:', change.selectorPath);
+        if (change.addedNodes?.length) {
+          console.log('- Added Nodes:', change.addedNodes.length);
+        }
+        if (change.removedNodes?.length) {
+          console.log('- Removed Nodes:', change.removedNodes.length);
+        }
+      });
+
+      const systemPrompt = `You are an AI assistant that finds DOM elements in newly added content.
+
+Latest DOM Changes:
+${JSON.stringify(latestChanges, null, 2)}
+
+Description of element to find: "${description}"
+
+Instructions:
+1. Look through the HTML in the latest DOM changes
+2. Find the element that best matches the description
+3. Return the COMPLETE selector path:
+   - Start with the container selector from the DOM changes
+   - Continue down to the specific element (img, video, button, etc.)
+   - For media elements, go all the way to the actual media tag (img, video, source)
+4. Focus on elements in addedNodes, containerHTML, or elementHTML
+5. Prefer IDs and unique class combinations
+6. Make sure the selector is specific enough to target the exact element
+
+Example good selectors:
+- For an image: "#app > div.modal > div.media-modal__media > div.media-modal-item > div.media-modal-item__wrapper > img.media-modal-item__content"
+- For a video: "#app > div.modal > div.media-modal__media > div.media-modal-item > video.video-player > source"
+- For a button: "#app > div.modal > div.media-modal__media > button.media-modal__button--close"
+
+Return ONLY the complete selector string. No explanation, no JSON, just the complete selector path to that specific element in the description.`;
+
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        console.log('❌ Error: Missing API key');
+        throw new Error('GEMINI_API_KEY not found in environment variables');
+      }
+
+      console.log('\nQuerying AI for selector...');
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({
+        model: "gemini-2.0-flash-exp",
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 256,
+        }
+      });
+
+      const result = await model.generateContent(systemPrompt);
+      const selector = result.response.text().trim();
+      console.log('AI Response (selector):', selector);
+
+      // // Validate that the selector exists in the latest changes
+      // const selectorValid = await this.validateSelector(selector);
+
+      // if (!selectorValid) {
+      //   console.log('❌ Error: Generated selector not found in page');
+      //   throw new Error('Generated selector not found in current page state');
+      // }
+
+      // console.log(clc.green('✓ Valid selector found:'), selector);
+      console.log('=== Selector Search Complete ===\n');
+
+      return selector;
+    } catch (error) {
+      console.log(clc.red('✗ Failed to find selector:'), error.message);
+      throw error;
+    }
+  }
+
+  async validateSelector(selector) {
+    try {
+      // Actually try to find the element using the selector
+      const element = await this.page.$(selector);
+      return element !== null;
+    } catch (error) {
+      console.log(clc.yellow('⚠ Selector validation failed:'), error.message);
+      return false;
     }
   }
 }

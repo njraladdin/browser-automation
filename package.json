@@ -13,8 +13,10 @@
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
     "cheerio": "^1.0.0",
+    "cli-color": "^2.0.4",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "mutation-observer": "^1.0.3",
     "puppeteer": "^23.11.1",
     "socket.io": "^4.8.1",
     "sqlite3": "^5.1.7"

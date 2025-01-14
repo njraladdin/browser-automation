@@ -186,7 +186,7 @@ io.on('connection', (socket) => {
 
 // Add this helper function to emit status updates
 function emitFlowStatus(flowId, status) {
-  console.log(`Emitting status for flow ${flowId}:`, status);
+  console.log(status);
   io.to(`flow-${flowId}`).emit('flow-status', status);
 }
 

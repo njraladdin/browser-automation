@@ -1,7 +1,6 @@
 const cheerio = require('cheerio');
 const fs = require('fs');
 const path = require('path');
-const { GoogleGenerativeAI } = require("@google/generative-ai");
 require('dotenv').config();
 
 class PageSnapshot {
@@ -16,11 +15,14 @@ class PageSnapshot {
       timestamp: null,
       textView: null
     };
+    this.latestDOMChanges = [];
+    this.observer = null;
   }
 
   async captureSnapshot(page) {
     try {
-
+      // Reset latest changes at the start of a new capture
+      this.latestDOMChanges = [];
 
       // Then ensure DOM is ready (important for SPAs and dynamic content)
       await page.waitForFunction(
@@ -113,6 +115,10 @@ class PageSnapshot {
 
       // Save debug files
       await this.saveDebugFiles();
+
+      // Start observing DOM changes AFTER capturing the snapshot
+      console.log('Starting DOM observer to track post-snapshot changes...');
+      await this.startDOMObserver(page);
 
       return this.snapshot;
     } catch (error) {
@@ -658,6 +664,205 @@ console.log('html loaded')
       .replace(/\n+/g, ' ') // Replace newlines with spaces
       .trim(); // Remove leading/trailing whitespace
   }
+
+  async startDOMObserver(page) {
+    try {
+      await page.evaluate(() => {
+        window.__domChanges = [];
+        
+        // Helper function to get element's selector path
+        function getElementPath(element) {
+          const path = [];
+          let currentNode = element;
+          
+          while (currentNode && currentNode !== document.body) {
+            let selector = currentNode.tagName.toLowerCase();
+            
+            if (currentNode.id) {
+              selector = `#${currentNode.id}`;
+              path.unshift(selector);
+              break; // If we find an ID, we can stop as it's unique
+            } else {
+              // Add classes that help identify the element
+              const classes = Array.from(currentNode.classList)
+                .filter(cls => 
+                  !cls.match(/^(hover|focus|active)/) &&
+                  !cls.includes('(') &&
+                  !cls.includes(')') &&
+                  !cls.includes('[') &&
+                  !cls.includes(']')
+                );
+              
+              if (classes.length) {
+                selector += '.' + classes.join('.');
+              }
+              
+              // Add nth-child if needed
+              const parent = currentNode.parentNode;
+              if (parent) {
+                const siblings = Array.from(parent.children);
+                const index = siblings.indexOf(currentNode) + 1;
+                if (siblings.length > 1) {
+                  selector += `:nth-child(${index})`;
+                }
+              }
+              
+              path.unshift(selector);
+              currentNode = currentNode.parentNode;
+            }
+          }
+          
+          return path.join(' > ');
+        }
+
+        const observer = new MutationObserver((mutations) => {
+          mutations.forEach((mutation) => {
+            // Skip attribute mutations
+            if (mutation.type === 'attributes') {
+              return;
+            }
+
+            // Get the relevant HTML and selector path
+            let relevantHTML;
+            let selectorPath = getElementPath(mutation.target);
+            
+            if (mutation.type === 'childList') {
+              relevantHTML = mutation.target.outerHTML;
+            } else if (mutation.type === 'attributes') {
+              relevantHTML = mutation.target.outerHTML;
+            } else if (mutation.type === 'characterData') {
+              relevantHTML = mutation.target.parentNode.outerHTML;
+              selectorPath = getElementPath(mutation.target.parentNode);
+            }
+
+            // Check if this HTML already exists in the changes array
+            const isDuplicate = window.__domChanges.some(existingChange => {
+              const existingHTML = existingChange.containerHTML || 
+                                 existingChange.elementHTML || 
+                                 (existingChange.addedNodes && existingChange.addedNodes.some(node => node.html === relevantHTML));
+              return existingHTML === relevantHTML;
+            });
+
+            if (!isDuplicate) {
+              let change = {
+                type: mutation.type,
+                timestamp: new Date().toISOString(),
+                selectorPath,
+                target: {
+                  tagName: mutation.target.tagName,
+                  id: mutation.target.id,
+                  className: mutation.target.className
+                }
+              };
+
+              if (mutation.type === 'childList') {
+                change.addedNodes = Array.from(mutation.addedNodes).map(node => ({
+                  tagName: node.tagName,
+                  id: node.id,
+                  className: node.className,
+                  html: node.outerHTML || node.textContent || null,
+                  selectorPath: node.nodeType === 1 ? getElementPath(node) : null
+                }));
+                
+                change.removedNodes = Array.from(mutation.removedNodes).map(node => ({
+                  tagName: node.tagName,
+                  id: node.id,
+                  className: node.className,
+                  selectorPath: node.nodeType === 1 ? getElementPath(node) : null
+                }));
+
+                change.containerHTML = mutation.target.outerHTML;
+              } else if (mutation.type === 'attributes') {
+                change.attributeName = mutation.attributeName;
+                change.oldValue = mutation.oldValue;
+                change.newValue = mutation.target.getAttribute(mutation.attributeName);
+                change.elementHTML = mutation.target.outerHTML;
+              } else if (mutation.type === 'characterData') {
+                change.oldValue = mutation.oldValue;
+                change.newValue = mutation.target.textContent;
+                change.containerHTML = mutation.target.parentNode.outerHTML;
+              }
+
+              window.__domChanges.push(change);
+            }
+          });
+        });
+
+        // Start observing - removed attributes from observation
+        observer.observe(document.body, {
+          childList: true,
+          // attributes: true,  // Commented out to ignore attribute changes
+          characterData: true,
+          subtree: true,
+          // attributeOldValue: true,  // Commented out since we're not tracking attributes
+          characterDataOldValue: true
+        });
+
+        window.__domObserver = observer;
+      });
+
+      // Set up periodic collection of changes
+      this.changeCollectionInterval = setInterval(async () => {
+        const changes = await page.evaluate(() => {
+          const currentChanges = window.__domChanges;
+          window.__domChanges = []; // Clear the changes array
+          return currentChanges;
+        });
+
+        if (changes && changes.length > 0) {
+          this.latestDOMChanges.push(...changes);
+          
+      
+          await this.logChangesToFile(changes);
+        }
+      }, 1000); // Collect changes every second
+
+      console.log('DOM observer started successfully');
+    } catch (error) {
+      console.error('Failed to start DOM observer:', error);
+    }
+  }
+
+  async stopDOMObserver(page) {
+    try {
+      clearInterval(this.changeCollectionInterval);
+      
+      await page.evaluate(() => {
+        if (window.__domObserver) {
+          window.__domObserver.disconnect();
+          delete window.__domObserver;
+        }
+      });
+
+      console.log('DOM observer stopped');
+    } catch (error) {
+      console.error('Failed to stop DOM observer:', error);
+    }
+  }
+
+  async logChangesToFile(changes) {
+    try {
+      const testDir = path.join(__dirname, 'test');
+      if (!fs.existsSync(testDir)) {
+        fs.mkdirSync(testDir);
+      }
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const logPath = path.join(testDir, `dom_changes_${timestamp}.json`);
+
+      fs.appendFileSync(
+        logPath,
+        JSON.stringify(changes, null, 2) + '\n',
+        'utf8'
+      );
+    } catch (error) {
+      console.error('Failed to log DOM changes:', error);
+    }
+  }
+
+  getLatestDOMChanges() {
+    return this.latestDOMChanges;
+  }
 }
 
 module.exports = PageSnapshot;
@@ -669,7 +874,7 @@ if (require.main === module) {
   (async () => {
     let browser;
     try {
-      const url = 'https://reddit.com';
+      const url = 'https://google.com';
       console.log(`Testing PageSnapshot with URL: ${url}`);
 
       console.log('Launching browser...');
@@ -691,6 +896,14 @@ if (require.main === module) {
       
       console.log('\nSnapshot captured successfully!');
       console.log('Files saved with timestamp:', result.timestamp);
+      
+      // Wait some time to collect post-snapshot changes
+      console.log('\nWaiting 10 seconds to collect DOM changes...');
+      await new Promise(resolve => setTimeout(resolve, 10000));
+      
+      // Stop the observer and get final changes
+      await snapshot.stopDOMObserver(page);
+      console.log('\nDOM Changes detected after snapshot:', snapshot.getLatestDOMChanges().length);
       console.log('\nDebug files location:', path.join(__dirname, 'test'));
 
     } catch (error) {
