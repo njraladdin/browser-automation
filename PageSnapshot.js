@@ -670,6 +670,79 @@ console.log('html loaded')
       await page.evaluate(() => {
         window.__domChanges = [];
         
+        // Helper function to generate interactive map for an element
+        function generateInteractiveMap(element) {
+          const interactiveMap = {
+            inputs: [],
+            buttons: [],
+            links: []
+          };
+
+          // Process inputs
+          element.querySelectorAll('input, textarea, select, [type="search"], [contenteditable="true"], [role="searchbox"], [role="textbox"]')
+            .forEach(input => {
+              interactiveMap.inputs.push({
+                type: input.type || input.tagName.toLowerCase(),
+                selector: getElementPath(input),
+                placeholder: input.placeholder,
+                id: input.id,
+                role: input.getAttribute('role'),
+                'aria-label': input.getAttribute('aria-label'),
+                value: input.value,
+                name: input.name
+              });
+            });
+
+          // Process buttons
+          element.querySelectorAll('button, [role="button"]')
+            .forEach(button => {
+              // Get only visible text content, filtering out any hidden elements
+              const visibleText = Array.from(button.childNodes)
+                .filter(node => 
+                  node.nodeType === Node.TEXT_NODE || 
+                  (node.nodeType === Node.ELEMENT_NODE && 
+                   window.getComputedStyle(node).display !== 'none')
+                )
+                .map(node => node.textContent || '')
+                .join('')
+                .trim();
+
+              // Only add buttons that have visible text or aria-label
+              const ariaLabel = button.getAttribute('aria-label');
+              if (visibleText || ariaLabel) {
+                interactiveMap.buttons.push({
+                  text: visibleText,
+                  selector: getElementPath(button),
+                  type: button.type,
+                  id: button.id,
+                  role: button.getAttribute('role'),
+                  'aria-label': ariaLabel,
+                  disabled: button.disabled
+                });
+              }
+            });
+
+          // Process links
+          element.querySelectorAll('a')
+            .forEach(link => {
+              const text = link.textContent.trim();
+              const ariaLabel = link.getAttribute('aria-label');
+              
+              if (!text && !ariaLabel) return;
+
+              interactiveMap.links.push({
+                text: text,
+                href: link.href,
+                selector: getElementPath(link),
+                id: link.id,
+                role: link.getAttribute('role'),
+                'aria-label': ariaLabel
+              });
+            });
+
+          return interactiveMap;
+        }
+
         // Helper function to get element's selector path
         function getElementPath(element) {
           const path = [];
@@ -717,25 +790,22 @@ console.log('html loaded')
 
         const observer = new MutationObserver((mutations) => {
           mutations.forEach((mutation) => {
-            // Skip attribute mutations
-            if (mutation.type === 'attributes') {
-              return;
-            }
+            if (mutation.type === 'attributes') return;
 
-            // Get the relevant HTML and selector path
             let relevantHTML;
             let selectorPath = getElementPath(mutation.target);
+            let interactiveMap;
             
             if (mutation.type === 'childList') {
               relevantHTML = mutation.target.outerHTML;
-            } else if (mutation.type === 'attributes') {
-              relevantHTML = mutation.target.outerHTML;
+              interactiveMap = generateInteractiveMap(mutation.target);
             } else if (mutation.type === 'characterData') {
               relevantHTML = mutation.target.parentNode.outerHTML;
               selectorPath = getElementPath(mutation.target.parentNode);
+              interactiveMap = generateInteractiveMap(mutation.target.parentNode);
             }
 
-            // Check if this HTML already exists in the changes array
+            // Check for duplicates...
             const isDuplicate = window.__domChanges.some(existingChange => {
               const existingHTML = existingChange.containerHTML || 
                                  existingChange.elementHTML || 
@@ -748,6 +818,7 @@ console.log('html loaded')
                 type: mutation.type,
                 timestamp: new Date().toISOString(),
                 selectorPath,
+                interactiveMap,  // Add the interactive map to the change object
                 target: {
                   tagName: mutation.target.tagName,
                   id: mutation.target.id,
@@ -761,7 +832,8 @@ console.log('html loaded')
                   id: node.id,
                   className: node.className,
                   html: node.outerHTML || node.textContent || null,
-                  selectorPath: node.nodeType === 1 ? getElementPath(node) : null
+                  selectorPath: node.nodeType === 1 ? getElementPath(node) : null,
+                  interactiveMap: node.nodeType === 1 ? generateInteractiveMap(node) : null  // Add interactive map for added nodes
                 }));
                 
                 change.removedNodes = Array.from(mutation.removedNodes).map(node => ({
@@ -772,11 +844,6 @@ console.log('html loaded')
                 }));
 
                 change.containerHTML = mutation.target.outerHTML;
-              } else if (mutation.type === 'attributes') {
-                change.attributeName = mutation.attributeName;
-                change.oldValue = mutation.oldValue;
-                change.newValue = mutation.target.getAttribute(mutation.attributeName);
-                change.elementHTML = mutation.target.outerHTML;
               } else if (mutation.type === 'characterData') {
                 change.oldValue = mutation.oldValue;
                 change.newValue = mutation.target.textContent;
@@ -788,13 +855,11 @@ console.log('html loaded')
           });
         });
 
-        // Start observing - removed attributes from observation
+        // Start observing
         observer.observe(document.body, {
           childList: true,
-          // attributes: true,  // Commented out to ignore attribute changes
           characterData: true,
           subtree: true,
-          // attributeOldValue: true,  // Commented out since we're not tracking attributes
           characterDataOldValue: true
         });
 
