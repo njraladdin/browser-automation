@@ -175,6 +175,23 @@ class PageSnapshot {
   async generateInteractiveView(page) {
     this.selectorCounter = 0;
     this.selectorToOriginalMap.clear();
+    
+    // Process all shadow trees first
+    const interactiveView = this._generateInteractiveMapFromCheerio(
+      this.$,
+      this.snapshot.shadowDOM,
+      this.snapshot.iframeData
+    );
+
+    // Store in snapshot
+    this.snapshot.interactive = interactiveView;
+
+    return {
+      view: interactiveView
+    };
+  }
+
+  _generateInteractiveMapFromCheerio($, shadowDOM = null, iframeData = null) {
     const interactiveView = {
       inputs: [],
       buttons: [],
@@ -192,83 +209,10 @@ class PageSnapshot {
       return shortSelector;
     };
 
-    // Modify the shadow DOM parsing section
-    const parseShadowContent = (shadowTree, parentPath = '') => {
-      const temp = this.$('<div>').html(shadowTree.content);
-      const currentPath = `${parentPath} > ${shadowTree.hostElement.tagName} > shadow-root`;
-
-      temp.find('input, textarea, select').each((_, el) => {
-        const $el = this.$(el);
-        const originalSelector = `${shadowTree.hostElement.tagName} > input[type="${$el.attr('type')}"]`;
-        const selector = processSelector(originalSelector);
-        
-        interactiveView.inputs.push({
-          type: $el.attr('type') || el.tagName.toLowerCase(),
-          selector: selector,
-          placeholder: $el.attr('placeholder'),
-          id: $el.attr('id'),
-          role: $el.attr('role'),
-          'aria-label': $el.attr('aria-label'),
-          value: $el.attr('value'),
-          name: $el.attr('name'),
-          shadowPath: `${currentPath} > ${el.tagName.toLowerCase()}`
-        });
-      });
-
-      // Update buttons section
-      temp.find('button, [role="button"]').each((_, el) => {
-        const $el = this.$(el);
-        const originalSelector = `${shadowTree.hostElement.tagName} > button`;
-        const selector = processSelector(originalSelector);
-        
-        interactiveView.buttons.push({
-          text: $el.text().trim(),
-          selector: selector,
-          type: $el.attr('type'),
-          id: $el.attr('id'),
-          role: $el.attr('role'),
-          'aria-label': $el.attr('aria-label'),
-          disabled: $el.prop('disabled'),
-          shadowPath: `${currentPath} > ${el.tagName.toLowerCase()}`,
-          nearbyElementsText: this.getNearbyElementsText($el)
-        });
-      });
-
-      // Update links section
-      temp.find('a').each((_, el) => {
-        const $el = this.$(el);
-        const text = $el.text().trim();
-        const ariaLabel = $el.attr('aria-label');
-        
-        if (!text && !ariaLabel) return;
-
-        const originalSelector = `${shadowTree.hostElement.tagName} > a`;
-        const selector = processSelector(originalSelector);
-        
-        interactiveView.links.push({
-          text: text,
-          href: $el.attr('href'),
-          selector: selector,
-          id: $el.attr('id'),
-          role: $el.attr('role'),
-          'aria-label': ariaLabel,
-          shadowPath: `${currentPath} > ${el.tagName.toLowerCase()}`
-        });
-      });
-
-      shadowTree.shadowTrees.forEach(nestedTree => {
-        parseShadowContent(nestedTree, currentPath);
-      });
-    };
-
-    // Process all shadow trees first
-    this.snapshot.shadowDOM.forEach(shadowTree => {
-      parseShadowContent(shadowTree);
-    });
-
-    // Then process regular DOM elements
-    this.$('input, textarea, select, [type="search"], [contenteditable="true"], faceplate-search-input, *[role="searchbox"], *[role="textbox"]').each((index, el) => {
-      const $el = this.$(el);
+    // Process main document elements
+    // Process inputs
+    $('input, textarea, select, [type="search"], [contenteditable="true"], faceplate-search-input, *[role="searchbox"], *[role="textbox"]').each((index, el) => {
+      const $el = $(el);
       const originalSelector = this.generateSelector($el);
       const selector = processSelector(originalSelector);
 
@@ -289,9 +233,9 @@ class PageSnapshot {
       });
     });
 
-    // Process regular buttons
-    this.$('button, [role="button"]').each((index, el) => {
-      const $el = this.$(el);
+    // Process buttons
+    $('button, [role="button"]').each((index, el) => {
+      const $el = $(el);
       const originalSelector = this.generateSelector($el);
       const selector = processSelector(originalSelector);
       
@@ -307,13 +251,12 @@ class PageSnapshot {
       });
     });
 
-    // Process regular links
-    this.$('a').each((index, el) => {
-      const $el = this.$(el);
+    // Process links
+    $('a').each((index, el) => {
+      const $el = $(el);
       const text = $el.text().trim();
       const ariaLabel = $el.attr('aria-label');
       
-      // Skip links that don't have text content or aria-label
       if (!text && !ariaLabel) return;
 
       const originalSelector = this.generateSelector($el);
@@ -329,12 +272,92 @@ class PageSnapshot {
       });
     });
 
-    // Update to only store interactive view once
-    this.snapshot.interactive = interactiveView;
+    // Process shadow DOM content
+    if (shadowDOM) {
+      shadowDOM.forEach(shadowTree => {
+        const temp = $('<div>').html(shadowTree.content);
+        const currentPath = `${shadowTree.hostElement.tagName} > shadow-root`;
 
-    return {
-      view: interactiveView
-    };
+        // Process shadow DOM inputs
+        temp.find('input, textarea, select').each((_, el) => {
+          const $el = $(el);
+          const originalSelector = `${shadowTree.hostElement.tagName} > input[type="${$el.attr('type')}"]`;
+          const selector = processSelector(originalSelector);
+          
+          interactiveView.inputs.push({
+            type: $el.attr('type') || el.tagName.toLowerCase(),
+            selector: selector,
+            placeholder: $el.attr('placeholder'),
+            id: $el.attr('id'),
+            role: $el.attr('role'),
+            'aria-label': $el.attr('aria-label'),
+            value: $el.attr('value'),
+            name: $el.attr('name'),
+            shadowPath: `${currentPath} > ${el.tagName.toLowerCase()}`
+          });
+        });
+
+        // Process shadow DOM buttons
+        temp.find('button, [role="button"]').each((_, el) => {
+          const $el = $(el);
+          const originalSelector = `${shadowTree.hostElement.tagName} > button`;
+          const selector = processSelector(originalSelector);
+          
+          interactiveView.buttons.push({
+            text: $el.text().trim(),
+            selector: selector,
+            type: $el.attr('type'),
+            id: $el.attr('id'),
+            role: $el.attr('role'),
+            'aria-label': $el.attr('aria-label'),
+            disabled: $el.prop('disabled'),
+            shadowPath: `${currentPath} > ${el.tagName.toLowerCase()}`,
+            nearbyElementsText: this.getNearbyElementsText($el)
+          });
+        });
+
+        // Process shadow DOM links
+        temp.find('a').each((_, el) => {
+          const $el = $(el);
+          const text = $el.text().trim();
+          const ariaLabel = $el.attr('aria-label');
+          
+          if (!text && !ariaLabel) return;
+
+          const originalSelector = `${shadowTree.hostElement.tagName} > a`;
+          const selector = processSelector(originalSelector);
+          
+          interactiveView.links.push({
+            text: text,
+            href: $el.attr('href'),
+            selector: selector,
+            id: $el.attr('id'),
+            role: $el.attr('role'),
+            'aria-label': ariaLabel,
+            shadowPath: `${currentPath} > ${el.tagName.toLowerCase()}`
+          });
+        });
+      });
+    }
+
+    // Process iframe content
+    if (iframeData) {
+      iframeData.forEach(iframe => {
+        const $iframe = cheerio.load(iframe.content);
+        const iframeInteractiveMap = this._generateInteractiveMapFromCheerio($iframe);
+        
+        // Add iframe path to each item
+        Object.keys(iframeInteractiveMap).forEach(key => {
+          iframeInteractiveMap[key].forEach(item => {
+            item.iframePath = `iframe[src="${iframe.src}"] > ${item.selector}`;
+            item.selector = `iframe[src="${iframe.src}"] > ${item.selector}`;
+          });
+          interactiveView[key].push(...iframeInteractiveMap[key]);
+        });
+      });
+    }
+
+    return interactiveView;
   }
 
   sanitizeSelector(selector) {
@@ -746,101 +769,28 @@ console.log('html loaded')
           return path.join(' > ');
         }
 
-        // Helper function to generate interactive map
-        function generateInteractiveMap(element) {
-          const interactiveMap = {
-            inputs: [],
-            buttons: [],
-            links: []
-          };
-
-          // Process inputs
-          element.querySelectorAll('input, textarea, select').forEach(input => {
-            interactiveMap.inputs.push({
-              type: input.type || input.tagName.toLowerCase(),
-              selector: getElementPath(input),
-              placeholder: input.placeholder,
-              id: input.id,
-              role: input.getAttribute('role'),
-              'aria-label': input.getAttribute('aria-label'),
-              value: input.value,
-              name: input.name
-            });
-          });
-
-          // Process buttons
-          element.querySelectorAll('button, [role="button"]').forEach(button => {
-            interactiveMap.buttons.push({
-              text: button.textContent.trim(),
-              selector: getElementPath(button),
-              type: button.type,
-              id: button.id,
-              role: button.getAttribute('role'),
-              'aria-label': button.getAttribute('aria-label'),
-              disabled: button.disabled
-            });
-          });
-
-          // Process links
-          element.querySelectorAll('a').forEach(link => {
-            const text = link.textContent.trim();
-            const ariaLabel = link.getAttribute('aria-label');
-            
-            if (!text && !ariaLabel) return;
-
-            interactiveMap.links.push({
-              text: text,
-              href: link.href,
-              selector: getElementPath(link),
-              id: link.id,
-              role: link.getAttribute('role'),
-              'aria-label': ariaLabel
-            });
-          });
-
-          return interactiveMap;
-        }
-
-        // Now the observer code...
+        // Create mutation observer
         const observer = new MutationObserver((mutations) => {
-          console.log('Mutation detected:', mutations.length, 'changes');
-          console.log('Mutations:', mutations.map(m => ({
-            type: m.type,
-            target: m.target.tagName,
-            addedNodes: m.addedNodes?.length,
-            removedNodes: m.removedNodes?.length
-          })));
-
           mutations.forEach((mutation) => {
             // Skip style/script changes
             if (mutation.target.tagName === 'STYLE' || 
                 mutation.target.tagName === 'SCRIPT' || 
                 mutation.target.tagName === 'LINK') {
-              console.log('Skipping style/script mutation');
               return;
             }
 
             if (mutation.type === 'attributes') {
-              console.log('Skipping attribute mutation');
               return;
             }
 
             let relevantHTML;
             let selectorPath = getElementPath(mutation.target);
-            let interactiveMap;
             
             if (mutation.type === 'childList') {
-              console.log('ChildList mutation:', {
-                addedNodes: mutation.addedNodes.length,
-                removedNodes: mutation.removedNodes.length
-              });
               relevantHTML = mutation.target.outerHTML;
-              interactiveMap = generateInteractiveMap(mutation.target);
             } else if (mutation.type === 'characterData') {
-              console.log('CharacterData mutation');
               relevantHTML = mutation.target.parentNode.outerHTML;
               selectorPath = getElementPath(mutation.target.parentNode);
-              interactiveMap = generateInteractiveMap(mutation.target.parentNode);
             }
 
             // Check for duplicates
@@ -856,8 +806,6 @@ console.log('html loaded')
                 type: mutation.type,
                 timestamp: new Date().toISOString(),
                 selectorPath,
-                interactiveMap,
-                html: relevantHTML,
                 target: {
                   tagName: mutation.target.tagName,
                   id: mutation.target.id,
@@ -866,13 +814,13 @@ console.log('html loaded')
               };
 
               if (mutation.type === 'childList') {
+                change.html = mutation.target.outerHTML;
                 change.addedNodes = Array.from(mutation.addedNodes).map(node => ({
                   tagName: node.tagName,
                   id: node.id,
                   className: node.className,
                   html: node.outerHTML || node.textContent || null,
-                  selectorPath: node.nodeType === 1 ? getElementPath(node) : null,
-                  interactiveMap: node.nodeType === 1 ? generateInteractiveMap(node) : null
+                  selectorPath: node.nodeType === 1 ? getElementPath(node) : null
                 }));
                 
                 change.removedNodes = Array.from(mutation.removedNodes).map(node => ({
@@ -881,12 +829,10 @@ console.log('html loaded')
                   className: node.className,
                   selectorPath: node.nodeType === 1 ? getElementPath(node) : null
                 }));
-
-                change.containerHTML = mutation.target.outerHTML;
               } else if (mutation.type === 'characterData') {
                 change.oldValue = mutation.oldValue;
                 change.newValue = mutation.target.textContent;
-                change.containerHTML = mutation.target.parentNode.outerHTML;
+                change.html = mutation.target.parentNode.outerHTML;
               }
 
               window.__domChanges.push(change);
@@ -907,22 +853,25 @@ console.log('html loaded')
       // Set up periodic collection of changes
       this.changeCollectionInterval = setInterval(async () => {
         const changes = await page.evaluate(() => {
-          console.log('Current changes:', window.__domChanges.length); // Browser console
           const currentChanges = window.__domChanges;
           window.__domChanges = []; 
           return currentChanges;
         });
 
-
         if (changes && changes.length > 0) {
           try {
             console.log('Processing changes...');
             const processedChanges = changes.map(change => {
-              const $ = cheerio.load(change.html || change.containerHTML);
-              const contentMap = this._generateContentMapFromCheerio($, change.shadowDOM, change.iframeData);
+              const $ = cheerio.load(change.html);
+              
+              // Generate both content and interactive maps
+              const contentMap = this._generateContentMapFromCheerio($);
+              const interactiveMap = this._generateInteractiveMapFromCheerio($);
+              
               return {
                 ...change,
-                contentMap
+                contentMap,
+                interactiveMap
               };
             });
 
