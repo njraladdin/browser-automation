@@ -589,8 +589,6 @@ console.log('html loaded')
               return;
             }
 
-            let selectorPath = getElementPath(mutation.target);
-            
             if (mutation.type === 'childList') {
               const addedNode = mutation.addedNodes[0];
               if (addedNode) {
@@ -606,19 +604,15 @@ console.log('html loaded')
                   changes: {
                     added: addedNode ? {
                       type: addedNode.nodeType === 1 ? 'element' : 'text',
-                      // Instead of getting outerHTML, get innerHTML and the root tag separately
-                      rootTag: addedNode.nodeType === 1 ? addedNode.tagName : null,
-                      content: addedNode.nodeType === 1 ? addedNode.innerHTML : addedNode.textContent,
-                      selectorPath: addedNode.nodeType === 1 ? getElementPath(addedNode) : null
+                      content: addedNode.nodeType === 1 ? addedNode.outerHTML : addedNode.textContent
                     } : null,
-                    removed: mutation.removedNodes.length > 0 ? 
-                      {
-                        type: mutation.removedNodes[0].nodeType === 1 ? 'element' : 'text',
-                        tagName: mutation.removedNodes[0].nodeType === 1 ? 
-                          mutation.removedNodes[0].tagName : null,
-                        textContent: mutation.removedNodes[0].nodeType === 3 ? 
-                          mutation.removedNodes[0].textContent : null
-                      } : null
+                    removed: mutation.removedNodes.length > 0 ? {
+                      type: mutation.removedNodes[0].nodeType === 1 ? 'element' : 'text',
+                      tagName: mutation.removedNodes[0].nodeType === 1 ? 
+                        mutation.removedNodes[0].tagName : null,
+                      textContent: mutation.removedNodes[0].nodeType === 3 ? 
+                        mutation.removedNodes[0].textContent : null
+                    } : null
                   }
                 };
 
@@ -633,7 +627,7 @@ console.log('html loaded')
               const change = {
                 type: 'characterData',
                 timestamp: new Date().toISOString(),
-                selectorPath,
+                selectorPath: getElementPath(mutation.target),
                 changes: {
                   oldValue: mutation.oldValue,
                   newValue: mutation.target.textContent
@@ -673,14 +667,11 @@ console.log('html loaded')
             const processedChanges = changes.map(change => {
               let html = '';
               let baseSelector = '';
-              let rootTag = '';
               if (change.type === 'childList') {
                 const addedNode = change.changes.added;
                 if (addedNode && addedNode.type === 'element') {
-                  // We get the root element's tag and inner content separately
                   html = addedNode.content;
-                  baseSelector = addedNode.selectorPath;
-                  rootTag = addedNode.rootTag.toLowerCase();
+                  baseSelector = change.selectorPath;
                 }
               }
 
@@ -688,7 +679,6 @@ console.log('html loaded')
                 return change;
               }
 
-              // When loading into cheerio, we don't wrap it in the root element since we already know its selector
               const $ = cheerio.load(html, {
                 xml: {
                   withDomLvl1: true,
