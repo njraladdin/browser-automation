@@ -257,16 +257,16 @@ IMPORTANT:
 
 For dynamic content (like modals, popups, or any new elements that appear after user actions):
 
-WHY USE findSelectorInLatestDomChanges()?
+WHY USE findSelectorForDynamicElementUsingAI()?
 - The interactive map only contains selectors for elements that existed when the page was first loaded
 - When new content appears dynamically (like modals), these elements aren't in our original map
 - The function analyzes recent DOM changes to find and generate reliable selectors for these new elements
 - It uses AI to understand your description and find the right element in the recent changes
 - Without this function, you'd have no reliable way to get selectors for dynamic content
 
-Use findSelectorInLatestDomChanges() to get selectors for elements that appear dynamically (like in modals, popups, etc). Here's how to use it:
+Use findSelectorForDynamicElementUsingAI() to get selectors for elements that appear dynamically (like in modals, popups, etc). Here's how to use it:
 
-Example using dynamic content with findSelectorInLatestDomChanges():
+Example using dynamic content with findSelectorForDynamicElementUsingAI():
 try {
   // Example 1: Handling a dropdown menu
   console.log('Opening dropdown menu...');
@@ -274,13 +274,13 @@ try {
   
   await new Promise(resolve => setTimeout(resolve, 2000));
   
-  const menuItemSelector = await findSelectorInLatestDomChanges(
+  const menuItemSelector = await findSelectorForDynamicElementUsingAI(
     'the actual clickable link/button element (not its container) in the dropdown that says "Settings"'
   );
   await page.click(menuItemSelector);
 
   // Example 2: Handling a notification
-  const notificationTextSelector = await findSelectorInLatestDomChanges(
+  const notificationTextSelector = await findSelectorForDynamicElementUsingAI(
     'the actual text element (p or span tag) containing the notification message'
   );
   const message = await page.$eval(notificationTextSelector, el => el.textContent);
@@ -289,7 +289,7 @@ console.log(message)
   await page.type('.search-input', 'test');
   await new Promise(resolve => setTimeout(resolve, 2000));
   
-  const suggestionSelector = await findSelectorInLatestDomChanges(
+  const suggestionSelector = await findSelectorForDynamicElementUsingAI(
     'the actual clickable suggestion element (li or div tag) from the autocomplete dropdown'
   );
   await page.click(suggestionSelector);
@@ -306,7 +306,7 @@ console.log(message)
   throw error;
 }
 IMPORTANT: 
-- Use findSelectorInLatestDomChanges() for ANY elements that appear after page changes (modals, popups, dynamic content)
+- Use findSelectorForDynamicElementUsingAI() for ANY elements that appear after page changes (modals, popups, dynamic content)
 - Always add a 2-second delay after the action that causes DOM changes
 - The function returns a selector you can use with normal page methods (click, $eval, etc)
 - For elements that were present when the page loaded, use the selectors from the interactive map instead
@@ -667,17 +667,17 @@ ${snapshot.html} */
       const stepFunction = new Function(
         'page', 
         'extractStructuredContentUsingAI',
-        'findSelectorInLatestDomChanges',
-        `return (async (page, extractStructuredContentUsingAI, findSelectorInLatestDomChanges) => {
+        'findSelectorForDynamicElementUsingAI',
+        `return (async (page, extractStructuredContentUsingAI, findSelectorForDynamicElementUsingAI) => {
           ${step.code}
-        })(page, extractStructuredContentUsingAI, findSelectorInLatestDomChanges)`
+        })(page, extractStructuredContentUsingAI, findSelectorForDynamicElementUsingAI)`
       );
 
       try {
         const result = await stepFunction(
           this.page, 
           this.extractStructuredContentUsingAI.bind(this),
-          this.findSelectorInLatestDomChanges.bind(this)
+          this.findSelectorForDynamicElementUsingAI.bind(this)
         );
         // If the result contains extractedData, store it in the step
         if (result && result.success && result.extractedData) {
@@ -731,7 +731,7 @@ ${snapshot.html} */
     }
   }
 
-  async findSelectorInLatestDomChanges(description) {
+  async findSelectorForDynamicElementUsingAI(description) {
     try {
       console.log(clc.cyan('\n▶ Finding selector for:'), description);
 
