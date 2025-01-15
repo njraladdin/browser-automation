@@ -595,7 +595,6 @@ console.log('html loaded')
                 const change = {
                   type: mutation.type,
                   timestamp: new Date().toISOString(),
-                  selectorPath: getElementPath(mutation.target),
                   target: {
                     tagName: mutation.target.tagName,
                     id: mutation.target.id,
@@ -676,7 +675,7 @@ console.log('html loaded')
               }
 
               if (!html) {
-                return change;
+                return null;  // Return null for changes without HTML content
               }
 
               const $ = cheerio.load(html, {
@@ -687,15 +686,18 @@ console.log('html loaded')
                 isDocument: false
               });
               
-              // Pass the base selector to _generateMapsFromCheerio
               const { interactive, content } = this._generateMapsFromCheerio($, null, null, baseSelector);
               
               return {
-                ...change,
+                type: change.type,
+                timestamp: change.timestamp,
+                // Commented out for cleaner output, uncomment for debugging
+                // target: change.target,
+                // changes: change.changes,
                 contentMap: content,
                 interactiveMap: interactive
               };
-            });
+            }).filter(change => change !== null);  // Filter out null changes
 
             this.latestDOMChanges.push(...processedChanges);
             await this.logChangesToFile(processedChanges);
