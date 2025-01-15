@@ -16,6 +16,7 @@ class AutomationFlow {
     this.INITIAL_URL = 'https://anonyig.com/en/';
     this.browserInitializing = null;
     this.statusCallback = null;
+    this.aiSelectorResults = [];
   }
 
   async delay(ms) {
@@ -376,10 +377,34 @@ ${snapshot.html} */
         throw new Error(executionResult.error);
       }
 
+      // After successful execution, if we have AI selectors, replace them with concrete ones
+      if (this.aiSelectorResults.length > 0) {
+        statusEmitter({ 
+          message: 'Replacing AI selectors with concrete values...', 
+          type: 'info', 
+          stepIndex 
+        });
+        
+        const updatedCode = await this.replaceAISelectorsWithConcreteSelectors(
+          code, 
+          this.aiSelectorResults
+        );
+        
+        // Update the step's code with concrete selectors
+        this.automationSteps[stepIndex].code = updatedCode;
+        code = updatedCode; // Update the code that will be returned
+        
+        statusEmitter({ 
+          message: 'Successfully replaced AI selectors with concrete values', 
+          type: 'success', 
+          stepIndex 
+        });
+      }
+
       console.log(clc.green('✓ Step added and executed successfully'));
       return { 
         success: true, 
-        code,
+        code, // This will now be the concrete version if AI selectors were used
         executionResult,
         screenshot: this.automationSteps[stepIndex].screenshot,
         extractedData: this.automationSteps[stepIndex].extractedData
@@ -567,20 +592,13 @@ ${snapshot.html} */
         await this.delay(500);
       }
 
-      const updatedSteps = this.automationSteps.map(step => ({
-        instructions: step.instructions,
-        code: step.code,
-        extractedData: step.extractedData,
-        screenshot: step.screenshot
-      }));
-
       console.log(clc.green('\n✓ All steps executed successfully'));
       console.log('[AutomationFlow] Execution completed. Last executed step:', this.lastExecutedStep);
 
       return { 
         success: true, 
         lastExecutedStep: this.lastExecutedStep,
-        steps: updatedSteps
+        steps: this.automationSteps
       };
     } catch (error) {
       console.log(clc.red('✗ Steps execution failed:'), error.message);
@@ -630,12 +648,16 @@ ${snapshot.html} */
   async executeSingleStep(stepIndex, statusEmitter = () => {}) {
     try {
       console.log(clc.cyan(`\n▶ Executing step ${stepIndex + 1}`));
- // Emit starting status
- statusEmitter({ 
-  message: 'Starting step execution...', 
-  type: 'executing', 
-  stepIndex 
-});
+      
+      // Reset AI selector results at the start
+      this.aiSelectorResults = [];
+      
+      // Emit starting status
+      statusEmitter({ 
+        message: 'Starting step execution...', 
+        type: 'executing', 
+        stepIndex 
+      });
       if (!this.browser || !this.page) {
         console.log(clc.cyan('▶ Browser not initialized, initializing...'));
         try {
@@ -664,6 +686,7 @@ ${snapshot.html} */
         stepIndex 
       });
 
+      // Execute the step
       const stepFunction = new Function(
         'page', 
         'extractStructuredContentUsingAI',
@@ -679,10 +702,12 @@ ${snapshot.html} */
           this.extractStructuredContentUsingAI.bind(this),
           this.findSelectorForDynamicElementUsingAI.bind(this)
         );
-        // If the result contains extractedData, store it in the step
+
+        // Store extracted data if present
         if (result && result.success && result.extractedData) {
           this.automationSteps[stepIndex].extractedData = result.extractedData;
         }
+
         statusEmitter({ 
           message: 'Step executed successfully', 
           type: 'success', 
@@ -712,18 +737,12 @@ ${snapshot.html} */
         console.log(clc.yellow('⚠ Failed to capture screenshot:'), screenshotError.message);
       }
 
-      const updatedSteps = this.automationSteps.map(step => ({
-        instructions: step.instructions,
-        code: step.code,
-        extractedData: step.extractedData,
-        screenshot: step.screenshot
-      }));
-
-      console.log(clc.green('✓ Step execution completed'));
+      console.log('\nRETURNING - Final step code:', this.automationSteps[stepIndex].code);
+      
       return { 
         success: true, 
         lastExecutedStep: this.lastExecutedStep,
-        steps: updatedSteps
+        steps: this.automationSteps
       };
     } catch (error) {
       console.log(clc.red('✗ Step execution failed:'), error.message);
@@ -802,17 +821,14 @@ Return ONLY the complete selector string. No explanation, no JSON, just the comp
       const selector = result.response.text().trim();
       console.log('AI Response (selector):', selector);
 
-      // // Validate that the selector exists in the latest changes
-      // const selectorValid = await this.validateSelector(selector);
+      // Store the result
+      this.aiSelectorResults.push({
+        description,
+        selector,
+        timestamp: Date.now()
+      });
 
-      // if (!selectorValid) {
-      //   console.log('❌ Error: Generated selector not found in page');
-      //   throw new Error('Generated selector not found in current page state');
-      // }
-
-      // console.log(clc.green('✓ Valid selector found:'), selector);
       console.log('=== Selector Search Complete ===\n');
-
       return selector;
     } catch (error) {
       console.log(clc.red('✗ Failed to find selector:'), error.message);
@@ -828,6 +844,56 @@ Return ONLY the complete selector string. No explanation, no JSON, just the comp
     } catch (error) {
       console.log(clc.yellow('⚠ Selector validation failed:'), error.message);
       return false;
+    }
+  }
+
+  async replaceAISelectorsWithConcreteSelectors(code, selectorResults) {
+    console.log({selectorResults})
+    try {
+      console.log(clc.cyan('▶ Generating concrete selectors for code...'));
+      
+      const systemPrompt = `You are an AI assistant that replaces dynamic selector lookups with concrete selectors.
+
+Original Code:
+${code}
+
+Selector Results (from findSelectorForDynamicElementUsingAI calls):
+${JSON.stringify(selectorResults, null, 2)}
+
+Instructions:
+1. Analyze the code and the selector results
+2. Replace each findSelectorForDynamicElementUsingAI call with its concrete selector
+3. If you notice patterns in selectors, optimize the code accordingly. make sure the css selector is valid.
+4. Preserve all other functionality and error handling
+5. Return ONLY the updated code, no explanations
+
+Important:
+- Keep all console.log statements
+- Maintain existing error handling
+- Preserve timing/delays
+- Only replace the findSelectorForDynamicElementUsingAI calls`;
+
+      const apiKey = process.env.GEMINI_API_KEY;
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({
+        model: "gemini-1.5-flash-8b",
+        generationConfig: {
+          temperature: 0.2,
+          topP: 0.95,
+          maxOutputTokens: 8192,
+        }
+      });
+
+      const result = await model.generateContent(systemPrompt);
+      const updatedCode = result.response.text().trim()
+      .replace(/```javascript\n?/g, '')
+      .replace(/```\n?/g, '');
+
+      console.log(clc.green('✓ Successfully generated concrete code'));
+      return updatedCode;
+    } catch (error) {
+      console.log(clc.red('✗ Failed to generate concrete code:'), error.message);
+      throw error;
     }
   }
 }
