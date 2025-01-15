@@ -589,29 +589,9 @@ console.log('html loaded')
               return;
             }
 
-            if (mutation.type === 'attributes') {
-              return;
-            }
-
-            let relevantHTML;
             let selectorPath = getElementPath(mutation.target);
             
             if (mutation.type === 'childList') {
-              relevantHTML = mutation.target.outerHTML;
-            } else if (mutation.type === 'characterData') {
-              relevantHTML = mutation.target.parentNode.outerHTML;
-              selectorPath = getElementPath(mutation.target.parentNode);
-            }
-
-            // Check for duplicates
-            const isDuplicate = window.__domChanges.some(existingChange => {
-              const existingHTML = existingChange.containerHTML || 
-                                 existingChange.elementHTML || 
-                                 (existingChange.addedNodes && existingChange.addedNodes.some(node => node.html === relevantHTML));
-              return existingHTML === relevantHTML;
-            });
-
-            if (!isDuplicate) {
               const change = {
                 type: mutation.type,
                 timestamp: new Date().toISOString(),
@@ -620,31 +600,49 @@ console.log('html loaded')
                   tagName: mutation.target.tagName,
                   id: mutation.target.id,
                   className: mutation.target.className
+                },
+                changes: {
+                  added: mutation.addedNodes.length > 0 ? 
+                    {
+                      type: mutation.addedNodes[0].nodeType === 1 ? 'element' : 'text',
+                      content: mutation.addedNodes[0].nodeType === 1 ? 
+                        mutation.addedNodes[0].outerHTML : 
+                        mutation.addedNodes[0].textContent,
+                      selectorPath: mutation.addedNodes[0].nodeType === 1 ? 
+                        getElementPath(mutation.addedNodes[0]) : null
+                    } : null,
+                  removed: mutation.removedNodes.length > 0 ? 
+                    {
+                      type: mutation.removedNodes[0].nodeType === 1 ? 'element' : 'text',
+                      tagName: mutation.removedNodes[0].nodeType === 1 ? 
+                        mutation.removedNodes[0].tagName : null,
+                      textContent: mutation.removedNodes[0].nodeType === 3 ? 
+                        mutation.removedNodes[0].textContent : null
+                    } : null
                 }
               };
 
-              if (mutation.type === 'childList') {
-                change.html = mutation.target.outerHTML;
-                change.addedNodes = Array.from(mutation.addedNodes).map(node => ({
-                  tagName: node.tagName,
-                  id: node.id,
-                  className: node.className,
-                  html: node.outerHTML || node.textContent || null,
-                  selectorPath: node.nodeType === 1 ? getElementPath(node) : null
-                }));
-                
-                change.removedNodes = Array.from(mutation.removedNodes).map(node => ({
-                  tagName: node.tagName,
-                  id: node.id,
-                  className: node.className,
-                  selectorPath: node.nodeType === 1 ? getElementPath(node) : null
-                }));
-              } else if (mutation.type === 'characterData') {
-                change.oldValue = mutation.oldValue;
-                change.newValue = mutation.target.textContent;
-                change.html = mutation.target.parentNode.outerHTML;
+              // Only save if there were actual changes
+              if (change.changes.added || change.changes.removed) {
+                window.__domChanges.push(change);
               }
-
+            } 
+            else if (mutation.type === 'characterData') {
+              // For text changes, only store the actual text difference
+              const change = {
+                type: 'characterData',
+                timestamp: new Date().toISOString(),
+                selectorPath,
+                changes: {
+                  oldValue: mutation.oldValue,
+                  newValue: mutation.target.textContent
+                },
+                parentInfo: {
+                  tagName: mutation.target.parentNode.tagName,
+                  selectorPath: getElementPath(mutation.target.parentNode)
+                }
+              };
+              
               window.__domChanges.push(change);
             }
           });
@@ -672,15 +670,30 @@ console.log('html loaded')
           try {
             console.log('Processing changes...');
             const processedChanges = changes.map(change => {
-              const $ = cheerio.load(change.html);
+              // Get the HTML content based on change type
+              let html = '';
+              if (change.type === 'childList') {
+                // Get HTML from the first added node if it exists
+                const addedNode = change.changes.added;
+                html = addedNode ? addedNode.content : '';
+              } else if (change.type === 'characterData') {
+                // For text changes, use the new value
+                html = change.changes.newValue;
+              }
+
+              if (!html) {
+                return change; // Return original change if no HTML to process
+              }
+
+              const $ = cheerio.load(html);
               
-              // Use our existing map generator but maintain original structure
+              // Generate maps from the changed content
               const { interactive, content } = this._generateMapsFromCheerio($);
               
               return {
                 ...change,
-                contentMap: content,           // Keep original property name
-                interactiveMap: interactive    // Keep original property name
+                contentMap: content,
+                interactiveMap: interactive
               };
             });
 

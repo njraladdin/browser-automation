@@ -317,8 +317,7 @@ Current Page URL: ${snapshot.url}
 Interactive map:
 ${JSON.stringify(snapshot.interactive, null, 2)}
 
-page html:
-${snapshot.html}
+
 
 Previous automation steps:
 ${previousSteps ? `Previous automation steps:
@@ -326,7 +325,8 @@ ${previousSteps}` : ''}
   DO NOT EVER USE SELECTORS THAT ARE NO PROVIDED TO YOU; EVER. only use the selectors provided to you in the interactive map. the selectorsi n the preivous steps examples were replaced and are not accurate, do not use them you fucking retard fucking pig idiot. 
 
 User Instructions: ${instructions}`;
-
+/*page html:
+${snapshot.html} */
       await this.savePromptForDebug(systemPrompt, instructions);
       
       const apiKey = process.env.GEMINI_API_KEY;
