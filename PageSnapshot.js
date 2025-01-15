@@ -592,39 +592,40 @@ console.log('html loaded')
             let selectorPath = getElementPath(mutation.target);
             
             if (mutation.type === 'childList') {
-              const change = {
-                type: mutation.type,
-                timestamp: new Date().toISOString(),
-                selectorPath,
-                target: {
-                  tagName: mutation.target.tagName,
-                  id: mutation.target.id,
-                  className: mutation.target.className
-                },
-                changes: {
-                  added: mutation.addedNodes.length > 0 ? 
-                    {
-                      type: mutation.addedNodes[0].nodeType === 1 ? 'element' : 'text',
-                      content: mutation.addedNodes[0].nodeType === 1 ? 
-                        mutation.addedNodes[0].outerHTML : 
-                        mutation.addedNodes[0].textContent,
-                      selectorPath: mutation.addedNodes[0].nodeType === 1 ? 
-                        getElementPath(mutation.addedNodes[0]) : null
+              const addedNode = mutation.addedNodes[0];
+              if (addedNode) {
+                const change = {
+                  type: mutation.type,
+                  timestamp: new Date().toISOString(),
+                  selectorPath: getElementPath(mutation.target),
+                  target: {
+                    tagName: mutation.target.tagName,
+                    id: mutation.target.id,
+                    className: mutation.target.className
+                  },
+                  changes: {
+                    added: addedNode ? {
+                      type: addedNode.nodeType === 1 ? 'element' : 'text',
+                      // Instead of getting outerHTML, get innerHTML and the root tag separately
+                      rootTag: addedNode.nodeType === 1 ? addedNode.tagName : null,
+                      content: addedNode.nodeType === 1 ? addedNode.innerHTML : addedNode.textContent,
+                      selectorPath: addedNode.nodeType === 1 ? getElementPath(addedNode) : null
                     } : null,
-                  removed: mutation.removedNodes.length > 0 ? 
-                    {
-                      type: mutation.removedNodes[0].nodeType === 1 ? 'element' : 'text',
-                      tagName: mutation.removedNodes[0].nodeType === 1 ? 
-                        mutation.removedNodes[0].tagName : null,
-                      textContent: mutation.removedNodes[0].nodeType === 3 ? 
-                        mutation.removedNodes[0].textContent : null
-                    } : null
-                }
-              };
+                    removed: mutation.removedNodes.length > 0 ? 
+                      {
+                        type: mutation.removedNodes[0].nodeType === 1 ? 'element' : 'text',
+                        tagName: mutation.removedNodes[0].nodeType === 1 ? 
+                          mutation.removedNodes[0].tagName : null,
+                        textContent: mutation.removedNodes[0].nodeType === 3 ? 
+                          mutation.removedNodes[0].textContent : null
+                      } : null
+                  }
+                };
 
-              // Only save if there were actual changes
-              if (change.changes.added || change.changes.removed) {
-                window.__domChanges.push(change);
+                // Only save if there were actual changes
+                if (change.changes.added || change.changes.removed) {
+                  window.__domChanges.push(change);
+                }
               }
             } 
             else if (mutation.type === 'characterData') {
@@ -670,25 +671,34 @@ console.log('html loaded')
           try {
             console.log('Processing changes...');
             const processedChanges = changes.map(change => {
-              // Get the HTML content based on change type
               let html = '';
+              let baseSelector = '';
+              let rootTag = '';
               if (change.type === 'childList') {
-                // Get HTML from the first added node if it exists
                 const addedNode = change.changes.added;
-                html = addedNode ? addedNode.content : '';
-              } else if (change.type === 'characterData') {
-                // For text changes, use the new value
-                html = change.changes.newValue;
+                if (addedNode && addedNode.type === 'element') {
+                  // We get the root element's tag and inner content separately
+                  html = addedNode.content;
+                  baseSelector = addedNode.selectorPath;
+                  rootTag = addedNode.rootTag.toLowerCase();
+                }
               }
 
               if (!html) {
-                return change; // Return original change if no HTML to process
+                return change;
               }
 
-              const $ = cheerio.load(html);
+              // When loading into cheerio, we don't wrap it in the root element since we already know its selector
+              const $ = cheerio.load(html, {
+                xml: {
+                  withDomLvl1: true,
+                  xmlMode: false,
+                },
+                isDocument: false
+              });
               
-              // Generate maps from the changed content
-              const { interactive, content } = this._generateMapsFromCheerio($);
+              // Pass the base selector to _generateMapsFromCheerio
+              const { interactive, content } = this._generateMapsFromCheerio($, null, null, baseSelector);
               
               return {
                 ...change,
@@ -771,7 +781,7 @@ console.log('html loaded')
     return maps;
   }
 
-  _generateMapsFromCheerio($, shadowDOM = null, iframeData = null) {
+  _generateMapsFromCheerio($, shadowDOM = null, iframeData = null, baseSelector = '') {
     const interactive = {
       inputs: [],
       buttons: [],
@@ -781,16 +791,22 @@ console.log('html loaded')
 
     // Helper function to process selector
     const processSelector = (originalSelector) => {
-      if (originalSelector.length <= 500) {
-        return originalSelector;
+      let finalSelector = originalSelector;
+      if (baseSelector) {
+        // Just append the element's selector to the base selector
+        finalSelector = `${baseSelector} > ${originalSelector}`;
+      }
+
+      if (finalSelector.length <= 500) {
+        return finalSelector;
       }
       const shortSelector = `__SELECTOR__${++this.selectorCounter}`;
-      this.selectorToOriginalMap.set(shortSelector, originalSelector);
+      this.selectorToOriginalMap.set(shortSelector, finalSelector);
       return shortSelector;
     };
 
-    // Process main document elements
-    $('body *').each((_, element) => {
+    // Process elements - use root() instead of body to avoid html > body prefix
+    $($.root()).children().find('*').addBack().each((_, element) => {
       const $el = $(element);
       
       // Skip script and style elements
@@ -798,8 +814,9 @@ console.log('html loaded')
         return;
       }
 
-      const originalSelector = this.generateSelector($el);
-      const selector = processSelector(originalSelector);
+      // Generate selector directly from the element
+      const elementSelector = this.generateSelector($el);
+      const selector = processSelector(elementSelector);
 
       // Process for interactive map
       if ($el.is('input, textarea, select, [type="search"], [contenteditable="true"], faceplate-search-input, *[role="searchbox"], *[role="textbox"]')) {
@@ -890,7 +907,7 @@ console.log('html loaded')
     if (shadowDOM) {
       shadowDOM.forEach(shadowTree => {
         const $shadow = cheerio.load(shadowTree.content);
-        const shadowMaps = this._generateMapsFromCheerio($shadow);
+        const shadowMaps = this._generateMapsFromCheerio($shadow, null, null, shadowTree.hostElement.tagName);
         
         const currentPath = `${shadowTree.hostElement.tagName} > shadow-root`;
         
@@ -916,7 +933,7 @@ console.log('html loaded')
     if (iframeData) {
       iframeData.forEach(iframe => {
         const $iframe = cheerio.load(iframe.content);
-        const iframeMaps = this._generateMapsFromCheerio($iframe);
+        const iframeMaps = this._generateMapsFromCheerio($iframe, null, null, `iframe[src="${iframe.src}"]`);
         
         // Add iframe paths to interactive elements
         Object.keys(iframeMaps.interactive).forEach(key => {
