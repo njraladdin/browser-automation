@@ -98,6 +98,7 @@ run each benchmark, troubleshoot and improve :
 
     - send pagehtml 
 
+    - !important: recursive code genreation: the ai can also use a function generateCodeHere(code) in the mdidle of the puppeteer code, which genreates the code there with  up to date snapshot
 
 benchmarks: 
 - go to airbnb,scroll to load all listings, extract all listings details 

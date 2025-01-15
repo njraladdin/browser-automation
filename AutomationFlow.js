@@ -4,8 +4,6 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 const PageSnapshot = require('./PageSnapshot');
 const path = require('path');
 const fs = require('fs');
-const util = require('util');
-const fsPromises = require('fs').promises;
 const clc = require('cli-color');
 
 class AutomationFlow {
@@ -186,13 +184,13 @@ try {
 }
 
 For data extraction tasks:
-The parseTextViewWithAI function returns the extracted data directly (either as an object or string).
+The extractStructuredContentUsingAI function returns the extracted data directly (either as an object or string).
 Your code should wrap the result in a success/extractedData object when using this function.
 
-Example using parseTextViewWithAI:
+Example using extractStructuredContentUsingAI:
 try {
   console.log('Extracting product data...');
-  const extractedData = await parseTextViewWithAI('Extract all product listings with their prices, names, and descriptions');
+  const extractedData = await extractStructuredContentUsingAI('Extract all product listings with their prices, names, and descriptions');
   console.log('Extracted data:', extractedData);
   return { 
     success: true, 
@@ -204,10 +202,10 @@ try {
 }
 
 IMPORTANT: if you need to do any sorts of extraction of data, you need to use the given function like the example above. you jsut give which data you want in the prop and the function would take care of the rest. do not try to use querySelectorAll or anything like that.
-IMPORTANT: When using parseTextViewWithAI, always wrap its result in a success/extractedData object and return it.
+IMPORTANT: When using extractStructuredContentUsingAI, always wrap its result in a success/extractedData object and return it.
 
 For returning extracted data:
-Any time you need to return data (whether from parseTextViewWithAI or your own extraction logic), use this format:
+Any time you need to return data (whether from extractStructuredContentUsingAI or your own extraction logic), use this format:
 return {
   success: true,
   extractedData: data  // can be an object, array, or string
@@ -215,10 +213,10 @@ return {
 
 Examples:
 
-1. Using parseTextViewWithAI:
+1. Using extractStructuredContentUsingAI:
 try {
   console.log('Extracting product data...');
-  const extractedData = await parseTextViewWithAI('Extract all product listings with their prices, names, and descriptions');
+  const extractedData = await extractStructuredContentUsingAI('Extract all product listings with their prices, names, and descriptions');
   console.log('Extracted data:', extractedData);
   return { 
     success: true, 
@@ -254,7 +252,7 @@ try {
 
 IMPORTANT: 
 - If you need to extract or collect any data, always return it in the success/extractedData format
-- This applies to both parseTextViewWithAI results and any custom data collection
+- This applies to both extractStructuredContentUsingAI results and any custom data collection
 - The extractedData can be any type of data structure (object, array, string, etc.)
 
 For dynamic content (like modals, popups, or any new elements that appear after user actions):
@@ -397,9 +395,9 @@ User Instructions: ${instructions}`;
     }
   }
 
-  async parseTextViewWithAI(structurePrompt) {
+  async extractStructuredContentUsingAI(structurePrompt) {
     try {
-      console.log(clc.cyan('▶ Starting AI text parsing...'));
+      console.log(clc.cyan('▶ Starting AI content extraction...'));
       
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
@@ -417,12 +415,23 @@ User Instructions: ${instructions}`;
         }
       });
 
-      const textContent = await this.pageSnapshot.generateTextView(this.page);
+      // Get the content map instead of text view
+      const contentMap = this.pageSnapshot.getContentMap();
 
-      const systemPrompt = `You are an AI assistant that parses webpage text content and extracts structured information.
+      const systemPrompt = `You are an AI assistant that parses webpage content and extracts structured information.
 
-      Input Text Content from Webpage:
-      ${textContent}
+      Input Content Map from Webpage:
+      ${JSON.stringify(contentMap, null, 2)}
+
+      The content map contains structured data where:
+      - type: can be 'text', 'media', or 'structure'
+      - content: the actual text content (for text type)
+      - mediaType: 'image' or 'video' (for media type)
+      - src: source URL (for media type)
+      - tag: HTML tag name
+      - selector: unique selector for the element
+      - role: ARIA role if present
+      - aria-label: accessibility label if present
 
       Instructions for Parsing:
       ${structurePrompt}
@@ -471,7 +480,8 @@ User Instructions: ${instructions}`;
       - Use clear, descriptive keys for each piece of information
       - Don't combine different types of information into single fields
       - Keep data well-structured and organized
-      - We need to extract as much relevant data as possible`;
+      - We need to extract as much relevant data as possible
+      - Use the structured content map to accurately identify and extract information`;
 
       const result = await model.generateContent({
         contents: [{ role: "user", parts: [{ text: systemPrompt }]}]
@@ -489,13 +499,13 @@ User Instructions: ${instructions}`;
 
       fs.writeFileSync(
         path.join(testDir, `ai_parsed_${timestamp}.txt`),
-        `Structure Prompt:\n${structurePrompt}\n\nParsed Result:\n${parsedText}`,
+        `Structure Prompt:\n${structurePrompt}\n\nContent Map:\n${JSON.stringify(contentMap, null, 2)}\n\nParsed Result:\n${parsedText}`,
         'utf8'
       );
 
       try {
         const result = JSON.parse(parsedText);
-        console.log(clc.green('✓ Successfully parsed text with AI'));
+        console.log(clc.green('✓ Successfully parsed content with AI'));
         return result;
       } catch (e) {
         console.log(clc.yellow('⚠ AI response was not valid JSON, returning raw text'));
@@ -503,7 +513,7 @@ User Instructions: ${instructions}`;
       }
 
     } catch (error) {
-      console.log(clc.red('✗ Text parsing failed:'), error.message);
+      console.log(clc.red('✗ Content parsing failed:'), error.message);
       throw error;
     }
   }
@@ -656,17 +666,17 @@ User Instructions: ${instructions}`;
 
       const stepFunction = new Function(
         'page', 
-        'parseTextViewWithAI',
+        'extractStructuredContentUsingAI',
         'findSelectorInLatestDomChanges',
-        `return (async (page, parseTextViewWithAI, findSelectorInLatestDomChanges) => {
+        `return (async (page, extractStructuredContentUsingAI, findSelectorInLatestDomChanges) => {
           ${step.code}
-        })(page, parseTextViewWithAI, findSelectorInLatestDomChanges)`
+        })(page, extractStructuredContentUsingAI, findSelectorInLatestDomChanges)`
       );
 
       try {
         const result = await stepFunction(
           this.page, 
-          this.parseTextViewWithAI.bind(this),
+          this.extractStructuredContentUsingAI.bind(this),
           this.findSelectorInLatestDomChanges.bind(this)
         );
         // If the result contains extractedData, store it in the step
