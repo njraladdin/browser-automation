@@ -306,11 +306,51 @@ console.log(message)
   console.error('Failed:', error);
   throw error;
 }
+  Example of INCORRECT usage (DON'T DO THIS):
+❌ const mediaType = await findSelectorForDynamicElementUsingAI('determine if video or image');  // Wrong! Function only returns selectors
+❌ const sourceUrl = await findSelectorForDynamicElementUsingAI('get the source URL');  // Wrong! Function only returns selectors
+
+Instead, do this:
+✅ const mediaSelector = await findSelectorForDynamicElementUsingAI('the video or img element in the modal');
+✅ const mediaType = await page.$eval(mediaSelector, el => el.tagName.toLowerCase());
+✅ const sourceUrl = await page.$eval(mediaSelector, el => el.src);
+
 IMPORTANT: 
 - Use findSelectorForDynamicElementUsingAI() for ANY elements that appear after page changes (modals, popups, dynamic content)
+- This function ONLY returns a CSS selector string. It does NOT return data, types, or any other information
 - Always add a 2-second delay after the action that causes DOM changes
 - The function returns a selector you can use with normal page methods (click, $eval, etc)
 - For elements that were present when the page loaded, use the selectors from the interactive map instead
+
+
+
+For handling unpredictable outcomes after actions, use generateNextActionCodeUsingAI():
+
+Example usage:
+try {
+  console.log('Clicking submit button...');
+  await page.click('#submit-button');
+  
+  // Wait for DOM changes to settle
+  await new Promise(resolve => setTimeout(resolve, 2000));
+  
+  const success = await generateNextActionCodeUsingAI(
+    'Check if: 1) Success message appeared 2) Error message shown 3) Form validation failed'
+  );
+
+  if (!success) {
+    throw new Error('Action failed');
+  }
+} catch (error) {
+  console.error('Failed:', error);
+  throw error;
+}
+
+Don't use this when:
+- You just need to wait for an element (use waitForSelector instead)
+- You need to extract data (use extractStructuredContentUsingAI instead)
+- You need to find a dynamic element (use findSelectorForDynamicElementUsingAI instead)
+
 
 Current Page URL: ${snapshot.url}
 -you can use the given interactive elements map where you are provided each element on the page and it's selector so you can interact with them. Use the selectors exactly as they appear in the 'selector' field (in format __SELECTOR__N). DO NOT MODIFY THE SELECTORS. use the interactive map as a guide.
@@ -893,6 +933,153 @@ Important:
       return updatedCode;
     } catch (error) {
       console.log(clc.red('✗ Failed to generate concrete code:'), error.message);
+      throw error;
+    }
+  }
+
+  async generateNextActionCodeUsingAI(description) {
+    try {
+      console.log(clc.cyan('\n▶ Generating next action code for:'), description);
+
+      const latestChanges = this.pageSnapshot.getLatestDOMChanges();
+      console.log(clc.cyan(`▶ Found ${latestChanges.length} DOM changes`));
+
+      if (!latestChanges || latestChanges.length === 0) {
+        throw new Error('No DOM changes tracked');
+      }
+
+      // Get current page content map for context
+      const contentMap = this.pageSnapshot.getContentMap();
+
+      const systemPrompt = `You are an AI assistant that generates Puppeteer code for handling unpredictable next actions.
+
+Latest DOM Changes (showing what changed after the action):
+${JSON.stringify(latestChanges, null, 2)}
+
+Current Page Content Map (showing current state):
+${JSON.stringify(contentMap, null, 2)}
+
+Description of next action to handle: "${description}"
+
+Instructions:
+1. Analyze the DOM changes to understand what happened after the action
+2. Generate code that:
+   - Detects which outcome occurred using the provided DOM changes
+   - Handles each possible outcome appropriately
+   - Uses proper error handling and logging
+3. Use standard Puppeteer methods:
+   - page.waitForSelector()
+   - page.evaluate()
+   - page.$()
+   - page.$$()
+   - page.$eval()
+   - page.click()
+   - etc.
+4. Always include proper error handling and logging
+5. Return only a boolean indicating success or failure
+
+Example Response Format:
+try {
+  console.log('Checking for possible outcomes...');
+  
+  // Check for success message
+  const hasSuccess = await page.evaluate(() => {
+    const successEl = document.querySelector('.success-message, .alert-success');
+    return successEl !== null && successEl.textContent.includes('Successfully');
+  });
+
+  if (hasSuccess) {
+    console.log('Success outcome detected');
+    return true;
+  }
+
+  // Check for validation errors
+  const hasErrors = await page.evaluate(() => {
+    const errorEl = document.querySelector('.error-message, .validation-error');
+    return errorEl !== null;
+  });
+
+  if (hasErrors) {
+    console.log('Validation errors detected');
+    return false;
+  }
+
+  // Check for verification required
+  const needsVerification = await page.evaluate(() => {
+    const verifyEl = document.querySelector('.verify-prompt');
+    return verifyEl !== null;
+  });
+
+  if (needsVerification) {
+    console.log('Verification required');
+    return false;
+  }
+
+  return true;  // Default success case
+
+} catch (error) {
+  console.error('Failed to handle outcome:', error);
+  return false;
+}
+
+Return ONLY the executable code block. No explanations or wrapper functions.`;
+
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error('GEMINI_API_KEY not found in environment variables');
+      }
+
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({
+        model: "gemini-2.0-flash-exp",
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 2048,
+        }
+      });
+
+      const result = await model.generateContent(systemPrompt);
+      const code = result.response.text().trim()
+        .replace(/```javascript\n?/g, '')
+        .replace(/```\n?/g, '');
+
+      // Execute the generated code
+      console.log(clc.cyan('▶ Executing generated next action code...'));
+      
+      const stepFunction = new Function(
+        'page',
+        'findSelectorForDynamicElementUsingAI',
+        'extractStructuredContentUsingAI',
+        `return (async (page, findSelectorForDynamicElementUsingAI, extractStructuredContentUsingAI) => {
+          ${code}
+        })(page, findSelectorForDynamicElementUsingAI, extractStructuredContentUsingAI)`
+      );
+
+      const executionResult = await stepFunction(
+        this.page,
+        this.findSelectorForDynamicElementUsingAI.bind(this),
+        this.extractStructuredContentUsingAI.bind(this)
+      );
+
+      console.log(clc.green('✓ Next action code executed successfully'));
+      console.log('Execution result:', executionResult);
+
+      // Save debug information
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const testDir = path.join(__dirname, 'test');
+      if (!fs.existsSync(testDir)) {
+        fs.mkdirSync(testDir);
+      }
+
+      fs.writeFileSync(
+        path.join(testDir, `next_action_${timestamp}.txt`),
+        `Description: ${description}\n\nGenerated Code:\n${code}\n\nExecution Result:\n${JSON.stringify(executionResult, null, 2)}`,
+        'utf8'
+      );
+
+      return executionResult;
+    } catch (error) {
+      console.log(clc.red('✗ Failed to generate/execute next action code:'), error.message);
       throw error;
     }
   }
