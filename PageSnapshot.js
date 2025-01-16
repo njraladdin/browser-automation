@@ -704,19 +704,27 @@ console.log('html loaded')
               
               const { interactive, content } = this._generateMapsFromCheerio($, null, null, baseSelector);
               
+              // Only return changes that actually have content or interactive elements
+              if (content.length === 0 && 
+                  interactive.inputs.length === 0 && 
+                  interactive.buttons.length === 0 && 
+                  interactive.links.length === 0) {
+                return null;
+              }
+
               return {
                 type: change.type,
                 timestamp: change.timestamp,
-                // Commented out for cleaner output, uncomment for debugging
-                // target: change.target,
-                // changes: change.changes,
                 contentMap: content,
                 interactiveMap: interactive
               };
             }).filter(change => change !== null);  // Filter out null changes
 
-            this.latestDOMChanges.push(...processedChanges);
-            await this.logChangesToFile(processedChanges);
+            // Only save if we have non-empty changes
+            if (processedChanges.length > 0) {
+              this.latestDOMChanges.push(...processedChanges);
+              await this.logChangesToFile(processedChanges);
+            }
           } catch (error) {
             console.error('Error processing changes:', error);
             await this.logChangesToFile(changes);
@@ -826,7 +834,7 @@ console.log('html loaded')
         finalSelector = `${baseSelector} > ${originalSelector}`;
       }
 
-      if (finalSelector.length <= 50) {
+      if (finalSelector.length <= 300) {
         return finalSelector;
       }
       const shortSelector = `__SELECTOR__${++this.selectorCounter}`;
@@ -1056,7 +1064,7 @@ if (require.main === module) {
   (async () => {
     let browser;
     try {
-      const url = 'https://www.reddit.com';
+      const url = 'https://www.airbnb.com';
       console.log(`Testing PageSnapshot with URL: ${url}`);
 
       console.log('Launching browser...');

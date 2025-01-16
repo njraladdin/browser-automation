@@ -13,7 +13,7 @@ class AutomationFlow {
     this.page = null;
     this.automationSteps = [];
     this.lastExecutedStep = -1;
-    this.INITIAL_URL = 'https://anonyig.com/en/';
+    this.INITIAL_URL = 'https://www.google.com';
     this.browserInitializing = null;
     this.statusCallback = null;
     this.aiSelectorResults = [];
