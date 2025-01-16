@@ -94,8 +94,6 @@ run each benchmark, troubleshoot and improve :
 
     Problem: extracting content using AI takes too long when infinite scrolling 
        Solutions: 
-          update prompt to tell the AI to use normal html parsing instead of AI to extract content if the html structure is clear 
-          make content extraction happen by AI writing a script not by AI directly
           optimize content map size in prompt 
 
 benchmarks: 

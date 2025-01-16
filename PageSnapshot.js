@@ -670,6 +670,10 @@ class PageSnapshot {
         // Add content or src
         if (item.content) {
           result += ` ${item.content}`;
+          // Add href for links if present
+          if (item.href) {
+            result += ` (href: ${item.href})`;
+          }
         } else if (item.src) {
           result += ` src: ${item.src}${item.alt ? ` alt: ${item.alt}` : ''}`;
         } else {
@@ -791,7 +795,8 @@ class PageSnapshot {
           type: element.tagName.toLowerCase() === 'a' ? 'link' : 'text',
           content: directText,
           tag: element.tagName.toLowerCase(),
-          selector: selector
+          selector: selector,
+          ...(element.tagName.toLowerCase() === 'a' && { href: $el.attr('href') })
         });
       }
 
