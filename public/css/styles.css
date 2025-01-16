@@ -1304,3 +1304,34 @@ code[class*="language-"] {
   padding: 0;
   tab-size: 2;
 }
+
+.step-header {
+  display: flex;
+  align-items: center;
+}
+
+.step-block {
+  position: relative;  /* For positioning the timer */
+}
+
+.live-timer {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 0.85em;
+  color: #666;
+  background: rgba(240, 240, 240, 0.9);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: monospace;
+}
+
+.execution-time {
+  font-size: 0.85em;
+  color: #666;
+  margin-left: auto;
+  background: #f0f0f0;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: monospace;
+}

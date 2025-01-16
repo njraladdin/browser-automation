@@ -105,6 +105,8 @@
     let socket;
     let currentUsername = null;
     let currentProfileId = null;
+    let stepTimers = {};
+    let activeTimers = {};
 
     // Initialize with first empty step
     window.onload = () => {
@@ -127,6 +129,19 @@
       const addButton = stepBlock.querySelector('.btn-primary');
       const playButton = document.getElementById('playButton');
       
+      const startTime = Date.now();
+      const timerDiv = document.createElement('div');
+      timerDiv.className = 'live-timer';
+      stepBlock.appendChild(timerDiv);
+      
+      // Start updating the timer display
+      const timerId = setInterval(() => {
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        timerDiv.textContent = `${elapsed}s`;
+      }, 100);
+      
+      activeTimers[stepNumber - 1] = { timerId, startTime };
+      
       // Disable the input and button, show loading state
       input.disabled = true;
       addButton.disabled = true;
@@ -141,11 +156,14 @@
         
         const data = await response.json();
         if (data.success) {
+          clearInterval(activeTimers[stepNumber - 1].timerId);
+          const executionTime = ((Date.now() - startTime) / 1000).toFixed(1);
           steps.push({ 
             instructions, 
             code: data.code,
             screenshot: data.screenshot,
-            extractedData: data.extractedData
+            extractedData: data.extractedData,
+            executionTime: `${executionTime}s`
           });
           
           // Update lastExecutedStep since we just executed this step
@@ -204,6 +222,9 @@
             <div class="step-number">${index + 1}</div>
             ${step.status ? `
               <div class="step-status ${step.status.type || ''}">${step.status.message || ''}</div>
+            ` : ''}
+            ${step.executionTime ? `
+              <div class="execution-time">${step.executionTime}</div>
             ` : ''}
           </div>
           
@@ -381,6 +402,14 @@
         playButton.disabled = steps.length === 0;
         playButton.innerHTML = '<span class="play-icon">▶</span> Play All Steps';
         
+        // Clean up any active timers
+        Object.keys(activeTimers).forEach(index => {
+          if (activeTimers[index]) {
+            clearInterval(activeTimers[index].timerId);
+            delete activeTimers[index];
+          }
+        });
+        
       } catch (error) {
         showStatus(`Error: ${error.message}`, 'error');
       }
@@ -548,6 +577,18 @@
       stepBlock.classList.add('executing');
       playButton.disabled = true;
       
+      const startTime = Date.now();
+      const timerDiv = document.createElement('div');
+      timerDiv.className = 'live-timer';
+      stepBlock.appendChild(timerDiv);
+      
+      const timerId = setInterval(() => {
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        timerDiv.textContent = `${elapsed}s`;
+      }, 100);
+      
+      activeTimers[stepIndex] = { timerId, startTime };
+      
       try {
         const response = await fetch(`/flows/${currentFlowId}/execute-step/${stepIndex}`, {
           method: 'POST'
@@ -555,8 +596,12 @@
         
         const data = await response.json();
         if (data.success) {
+          clearInterval(activeTimers[stepIndex].timerId);
+          const executionTime = ((Date.now() - startTime) / 1000).toFixed(1);
+          steps[stepIndex].executionTime = `${executionTime}s`;
           lastExecutedStep = stepIndex;
           steps = data.steps;
+          steps[stepIndex].executionTime = `${executionTime}s`;
           updateStepsList();
           showStatus('Step executed successfully!');
         } else {
@@ -565,6 +610,7 @@
       } catch (error) {
         showStatus(`Error: ${error.message}`, 'error');
       } finally {
+        timerDiv.remove();
         stepBlock.classList.remove('executing');
         playButton.disabled = false;
       }
@@ -811,9 +857,14 @@
       } catch (error) {
         showStatus(`Error: ${error.message}`, 'error');
       }
+      
+      // Clean up timer if exists
+      if (activeTimers[stepIndex]) {
+        clearInterval(activeTimers[stepIndex].timerId);
+        delete activeTimers[stepIndex];
+      }
     }
   </script>
-
 
 </body>
 </html> 
