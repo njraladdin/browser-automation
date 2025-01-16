@@ -787,7 +787,7 @@ class PageSnapshot {
       const directText = $el.clone().children().remove().end().text().trim();
       if (directText) {
         content.push({
-          type: 'text',
+          type: element.tagName.toLowerCase() === 'a' ? 'link' : 'text',
           content: directText,
           tag: element.tagName.toLowerCase(),
           selector: selector
