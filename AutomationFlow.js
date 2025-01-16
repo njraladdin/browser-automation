@@ -203,46 +203,11 @@ try {
 }
 
 === DATA EXTRACTION ===
-OVERVIEW:
-1. FIRST analyze the content map structure to determine if the data follows a predictable pattern
-2. Choose between two approaches based on content structure
-3. Always return data in the standard success/extractedData format
-4. Implement clear console logs to track progress
-
-A. STRUCTURED CONTENT (Preferred Method)
-When to use:
-• Content follows clear patterns (listings, tables). not necessary  same selectors for each item, but same pattern
-• Elements have consistent structure
-• Data is organized in a predictable way
+Use extractStructuredContentUsingAI for all data extraction tasks.
 
 Example implementation:
 try {
-  console.log('Extracting data using DOM traversal...');
-  const elements = await page.$$('__SELECTOR__1');
-  const items = await Promise.all(elements.map(async (el) => ({
-    title: await el.$eval('__SELECTOR__2', e => e.textContent.trim()),
-    price: await el.$eval('__SELECTOR__3', e => e.textContent.trim()),
-    // ... other fields based on the provided content map
-  })));
-
-  return { 
-    success: true, 
-    extractedData: { items } 
-  };
-} catch (error) {
-  console.error('Failed to extract data:', error);
-  throw error;
-}
-
-B. UNSTRUCTURED CONTENT
-When to use:
-• Complex or irregular content structure
-• Dynamic or varied layouts
-• No clear pattern in content organization
-
-Example implementation:
-try {
-  console.log('Extracting product data...');
+  console.log('Extracting data...');
   const extractedData = await extractStructuredContentUsingAI('Extract all product listings with their prices, names, and descriptions');
   console.log('Extracted data:', extractedData);
   return { 
@@ -254,89 +219,11 @@ try {
   throw error;
 }
 
-IMPORTANT NOTES FOR DATA EXTRACTION:
-• Always try DOM traversal first (faster and more efficient)
-• When using extractStructuredContentUsingAI, just provide what data you want - the function handles the rest
-• Do not use querySelectorAll for unstructured content
-• Always wrap results in success/extractedData object
-• The extractedData can be any type (object, array, string)
-• Log samples of extracted data for verification
-
 === INFINITE SCROLL HANDLING ===
 OVERVIEW:
-• First analyze if content follows a predictable structure
-• Choose appropriate method based on content type
+• Use extractStructuredContentUsingAI with extractFromNewlyAddedContent option
 • Implement gradual scrolling and adequate waiting times
 • Track and verify new content loading
-
-A. STRUCTURED CONTENT (Preferred Method)
-When to use:
-• Content follows predictable patterns
-• Elements have consistent structure / html structure (listings, tables etc.)
-• DOM traversal is reliable
-
-Example implementation:
-try {
-  console.log('Starting infinite scroll extraction...');
-  let allItems = [];
-  
-  // Get initial items
-  const initialElements = await page.$$('__SELECTOR__1');
-  const initialItems = await Promise.all(initialElements.map(async (el) => ({
-    title: await el.$eval('__SELECTOR__2', e => e.textContent.trim()),
-    price: await el.$eval('__SELECTOR__3', e => e.textContent.trim()),
-    // ... other predictable fields
-  })));
-  
-  if (!initialItems.length) {
-    console.log('No initial items found');
-    throw new Error('No initial items found');
-  }
-  
-  allItems = initialItems;
-  console.log(\`Extracted \${allItems.length} initial items\`);
-  
-  // Scroll and extract 3 more times
-  for (let i = 0; i < 3; i++) {
-    console.log(\`Scrolling for page \${i + 2}...\`);
-    await page.evaluate(() => window.scrollBy(0, window.innerHeight * 2));
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    
-    // Get all elements and slice to get only new ones
-    const allElements = await page.$$('__SELECTOR__1');
-    const newElements = allElements.slice(allItems.length);
-    
-    if (newElements.length > 0) {
-      const newItems = await Promise.all(newElements.map(async (el) => ({
-        title: await el.$eval('__SELECTOR__2', e => e.textContent.trim()),
-        price: await el.$eval('__SELECTOR__3', e => e.textContent.trim()),
-        // ... other predictable fields
-      })));
-      
-      allItems = [...allItems, ...newItems];
-      console.log(\`Added \${newItems.length} new items. Total: \${allItems.length}\`);
-    } else {
-      console.log('No new items found, breaking scroll loop');
-      break;
-    }
-  }
-  
-  return {
-    success: true,
-    extractedData: {
-      items: allItems,
-      totalItems: allItems.length
-    }
-  };
-} catch (error) {
-  console.error('Failed to extract data:', error);
-  throw error;
-  
-B. UNSTRUCTURED CONTENT
-When to use:
-• Complex or irregular content
-• Dynamic layouts
-• When DOM traversal is unreliable
 
 Example implementation:
 try {
@@ -391,23 +278,15 @@ try {
 }
 
 IMPORTANT NOTES FOR INFINITE SCROLL:
-1. First analyze if content follows a predictable structure
-2. If structured:
-   • Use DOM traversal with page.evaluate() for initial items
-   • Keep track of the number of items extracted
-   • After scrolling, use the same selectors but slice from previous count
-   • This is much faster than using AI for each batch
-3. If unstructured:
-   • Use extractStructuredContentUsingAI
-   • Use extractFromNewlyAddedContent: true for new content
-4. Always:
-   • Scroll gradually (about two viewport heights)
-   • Wait at least 3 seconds after scrolling
-   • Check if new items were found
-   • Add appropriate logging
-   • Return in the standard success/extractedData format
-   • Implement clear console logs to follow progress
-   • Log samples of the data being extracted
+• Use extractStructuredContentUsingAI for all content extraction
+• Use extractFromNewlyAddedContent: true for new content after scrolling
+• Scroll gradually (about two viewport heights)
+• Wait at least 3 seconds after scrolling
+• Check if new items were found
+• Add appropriate logging
+• Return in the standard success/extractedData format
+• Implement clear console logs to follow progress
+• Log samples of the data being extracted
 
 === DYNAMIC CONTENT HANDLING ===
 WHY USE findSelectorForDynamicElementUsingAI():
