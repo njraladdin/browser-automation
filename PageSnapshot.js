@@ -13,8 +13,7 @@ class PageSnapshot {
       html: null,
       interactive: null,
       content: null,
-      timestamp: null,
-      textView: null
+      timestamp: null
     };
     this.latestDOMChanges = [];
     this.observer = null;
@@ -118,11 +117,6 @@ class PageSnapshot {
       // Set timestamp
       this.snapshot.timestamp = new Date().toISOString();
 
-      // Generate raw text view
-      const textViewStartTime = Date.now();
-      this.snapshot.textView = this.generateTextView();
-      console.log(`Text view generation took ${Date.now() - textViewStartTime}ms`);
-
       // Save debug files
       const debugStartTime = Date.now();
       await this.saveDebugFiles();
@@ -145,7 +139,6 @@ class PageSnapshot {
   getHtml() { return this.snapshot.html; }
   getInteractiveView() { return this.snapshot.interactive; }
   getTimestamp() { return this.snapshot.timestamp; }
-  getTextView() { return this.snapshot.textView; }
   
   cleanPage() {
     // Remove unwanted elements
@@ -310,7 +303,6 @@ class PageSnapshot {
     // Ensure we have resolved HTML content
     const htmlContent = await Promise.resolve(this.snapshot.html);
     const interactiveContent = await Promise.resolve(this.snapshot.interactive);
-    const textViewContent = await Promise.resolve(this.snapshot.textView);
 
     // Create a copy of interactive content with both selectors
     const interactiveWithSelectors = JSON.parse(JSON.stringify(interactiveContent));
@@ -332,12 +324,6 @@ class PageSnapshot {
     fs.writeFileSync(
       path.join(testDir, `interactive_${timestamp}.json`),
       JSON.stringify(interactiveWithSelectors, null, 2),
-      'utf8'
-    );
-
-    fs.writeFileSync(
-      path.join(testDir, `text_view_${timestamp}.txt`),
-      textViewContent,
       'utf8'
     );
 
@@ -368,124 +354,9 @@ class PageSnapshot {
     });
   }
 
-  async generateTextView(page) {
-    const startTime = Date.now();
-    
-    if (!this.$) {
-      console.log('Loading page HTML for text view generation...');
-      await this.loadPageHtml(page);
-    }
-console.log('html loaded')
-    // Clean main document HTML - only body content
-    this.$('body *').each((_, el) => {
-      const $el = this.$(el);
-      const attrs = Object.keys(el.attribs || {});
-      
-      // Remove all attributes except src, aria-label, and href
-      attrs.forEach(attr => {
-        if (attr !== 'src' && attr !== 'aria-label' && attr !== 'href') {
-          $el.removeAttr(attr);
-        }
-      });
-    });
-    
-    let fullSource = this.$('body').html();
-    
-    // Add shadow DOM content
-    if (this.snapshot.shadowDOM) {
-      this.snapshot.shadowDOM.forEach(shadow => {
-        const $shadow = cheerio.load(shadow.content);
-        
-        // Clean attributes in shadow DOM
-        $shadow('*').each((_, el) => {
-          const $el = $shadow(el);
-          const attrs = Object.keys(el.attribs || {});
-          
-          attrs.forEach(attr => {
-            if (attr !== 'src' && attr !== 'aria-label' && attr !== 'href') {
-              $el.removeAttr(attr);
-            }
-          });
-        });
-        
-        fullSource += $shadow.html();
-      });
-    }
+  
 
-    // Add iframe content
-    if (this.snapshot.iframeData) {
-      this.snapshot.iframeData.forEach(iframe => {
-        const $iframe = cheerio.load(iframe.content);
-        // Clean iframe content attributes
-        $iframe('*').each((_, el) => {
-          const $el = $iframe(el);
-          const attrs = Object.keys(el.attribs || {});
-          attrs.forEach(attr => {
-            if (attr !== 'src' && attr !== 'aria-label' && attr !== 'href') {
-              $el.removeAttr(attr);
-            }
-          });
-        });
-        fullSource += $iframe.html();
-      });
-    }
 
-    // Remove common HTML tags but keep important attributes and all content
-    const result = fullSource
-      // Simple tag removals for elements with attributes we want to keep
-      .replace(/<a/g, '')
-      .replace(/<div/g, '')
-      .replace(/<button/g, '')
-      .replace(/<img/g, '')
-      .replace(/<picture/g, '')
-      .replace(/<\/button>/g, '')
-      .replace(/<\/div>/g, '')
-      .replace(/<\/a>/g, '')
-      .replace(/<\/picture>/g, '')
-      // Remove other common elements
-      .replace(/<\/?span>/g, '')
-      .replace(/<\/?p>/g, '')
-      .replace(/<\/?section>/g, '')
-      .replace(/<\/?article>/g, '')
-      .replace(/<\/?main>/g, '')
-      .replace(/<\/?header>/g, '')
-      .replace(/<\/?footer>/g, '')
-      .replace(/<\/?nav>/g, '')
-      .replace(/<\/?aside>/g, '')
-      .replace(/<\/?ul>/g, '')
-      .replace(/<\/?ol>/g, '')
-      .replace(/<\/?li>/g, '')
-      .replace(/<\/?h[1-6]>/g, '')
-      .replace(/<\/?strong>/g, '')
-      .replace(/<\/?em>/g, '')
-      .replace(/<\/?i>/g, '')
-      .replace(/<\/?b>/g, '')
-      .replace(/<\/?small>/g, '')
-      .replace(/<\/?br>/g, '\n')
-      .replace(/<\/?hr>/g, '\n---\n')
-      .replace(/<\/?input[^>]*>/g, '')
-      .replace(/<\/?label[^>]*>/g, '')
-      .replace(/>/g, '')
-      // Clean up excess whitespace
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    console.log(`Text view generation took ${Date.now() - startTime}ms`);
-    return result;
-  }
-
-  async loadPageHtml(page) {
-    try {
-      const html = await page.content();
-      this.$ = cheerio.load(html, {
-        decodeEntities: true,
-        xmlMode: false
-      });
-    } catch (error) {
-      console.error('Failed to load page HTML:', error);
-      throw error;
-    }
-  }
 
   getNearbyElementsText($el) {
     const nearbyElements = new Set();
