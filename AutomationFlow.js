@@ -152,26 +152,27 @@ Requirements:
 - Always wrap code in try/catch
 - Add clear console.log statements
 - Return ONLY executable code
-- Use the selectors provided in the interactive map exactly as they appear (in format __SELECTOR__N), and if ther's an ID then you can use it as well
+- Use the selectors provided in the interactive map exactly as they appear (in format __SELECTOR__N), and if there's an ID then you can use it as well
 - For elements with shadowPath:
-  1. Use page.evaluate() to focus the element
+  1. Use page.evaluate() to traverse shadow DOM using the element's hostSelector and shadowPath values from the interactive map
   2. For typing, use page.keyboard.type() after focusing
-  use promise for waiting instead of waitForTimeout
+  3. Use promise for waiting instead of waitForTimeout
 - For regular elements: use normal page methods with minimal selectors
 - keep in mind that the code would probably be ran again, but not with the exact elements content or elements number (like listings etc.), so use selectors smartly 
 - write code in SLOW MODE, meaning impelment generous delays and waiting for elements to load, so that it's safer and also the user more easily to follow the execution when running
 Example using element with shadowPath:
 try {
-  console.log('Typing in input field');
+  console.log('Typing in search input');
   await page.evaluate(() => {
-    const input = document.querySelector('__SELECTOR__1')
-      ?.shadowRoot?.querySelector('faceplate-search-input')
-      ?.shadowRoot?.querySelector('input');
-    input.focus();
+    let element = document.querySelector("__SELECTOR__N");
+    // Traverse through shadow DOM using the path
+    element = element?.shadowRoot?.querySelector("__SELECTOR__N");
+    element = element?.shadowRoot?.querySelector("__SELECTOR__N");
+    if (element) element.focus();
   });
-  await page.keyboard.type('text', {delay: 50});
+  await page.keyboard.type('search text', {delay: 50});
 } catch (error) {
-  console.error('Failed to type text:', error);
+  console.error('Failed to type in search:', error);
   throw error;
 }
 

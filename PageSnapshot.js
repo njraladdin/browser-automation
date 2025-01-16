@@ -18,9 +18,11 @@ class PageSnapshot {
     };
     this.latestDOMChanges = [];
     this.observer = null;
+    this.processedElements = new Set();
   }
 
   async captureSnapshot(page) {
+    const snapshotStartTime = Date.now();
     try {
       // Reset latest changes at the start of a new capture
       this.latestDOMChanges = [];
@@ -101,27 +103,36 @@ class PageSnapshot {
       });
 
       // Clean the page
+      const cleanStartTime = Date.now();
       this.cleanPage();
       this.snapshot.html = this.getCleanedHtml();
+      console.log(`Page cleaning took ${Date.now() - cleanStartTime}ms`);
 
       // Replace separate map generations with single combined call
+      const mapsStartTime = Date.now();
       const maps = await this.generatePageMaps(page);
       this.snapshot.interactive = maps.interactive;
       this.snapshot.content = maps.content;
+      console.log(`Page maps generation took ${Date.now() - mapsStartTime}ms`);
       
       // Set timestamp
       this.snapshot.timestamp = new Date().toISOString();
 
       // Generate raw text view
+      const textViewStartTime = Date.now();
       this.snapshot.textView = this.generateTextView();
+      console.log(`Text view generation took ${Date.now() - textViewStartTime}ms`);
 
       // Save debug files
+      const debugStartTime = Date.now();
       await this.saveDebugFiles();
+      console.log(`Debug files saving took ${Date.now() - debugStartTime}ms`);
 
       // Start observing DOM changes AFTER capturing the snapshot
       console.log('Starting DOM observer to track post-snapshot changes...');
       await this.startDOMObserver(page);
 
+      console.log(`Total snapshot capture took ${Date.now() - snapshotStartTime}ms`);
       return this.snapshot;
     } catch (error) {
       console.error('Failed to capture snapshot:', error);
@@ -186,97 +197,94 @@ class PageSnapshot {
   }
 
   generateSelector($el) {
-    const id = $el.attr('id');
-    if (id) {
-      const safeId = this.sanitizeSelector(id);
-      if (safeId && this.$(`#${safeId}`).length === 1) return `#${safeId}`;
-    }
+    // Start timing
+    const startTime = performance.now();
+    
+    try {
+      // 1. First try ID - fastest path
+      const id = $el.attr('id');
+      if (id) {
+        const safeId = this.sanitizeSelector(id);
+        if (safeId && /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(safeId)) {
+          return `#${safeId}`;
+        }
+      }
 
-    // Build the full path from the element up to a unique ancestor or root
-    const path = [];
-    let current = $el;
-    let foundUniqueAncestor = false;
+      // 2. Try data-testid or similar attributes
+      const testId = $el.attr('data-testid') || $el.attr('data-test-id') || $el.attr('data-qa');
+      if (testId) {
+        return `[data-testid="${testId}"]`;
+      }
 
-    while (current.length && !foundUniqueAncestor) {
-      let selector = current[0].tagName.toLowerCase();
+      // 3. Build a path, but more efficiently
+      const path = [];
+      let current = $el;
+      let maxAncestors = 4; // Limit path length
       
-      // Add id if present
-      const currentId = current.attr('id');
-      if (currentId) {
-        const safeId = this.sanitizeSelector(currentId);
-        selector = `#${safeId}`;
-        foundUniqueAncestor = true;
-      } else {
-        // Add classes that help identify the element
+      while (current.length && maxAncestors > 0) {
+        let selector = current.prop('tagName').toLowerCase();
+        
+        // Add id if present
+        const currentId = current.attr('id');
+        if (currentId) {
+          const safeId = this.sanitizeSelector(currentId);
+          if (safeId && /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(safeId)) {
+            path.unshift(`#${safeId}`);
+            break; // ID found, we can stop here
+          }
+        }
+
+        // Add classes (but be selective)
         const classes = current.attr('class');
         if (classes) {
-          const safeClasses = classes.split(/\s+/)
+          const goodClasses = classes.split(/\s+/)
             .filter(cls => 
-              // Only include basic classes, avoid dynamic/complex ones
               cls && 
-              !cls.match(/^(hover|focus|active)/) &&
-              !cls.includes('(') &&
-              !cls.includes(')') &&
-              !cls.includes('[') &&
-              !cls.includes(']') &&
-              !cls.includes('\\') &&
-              !cls.includes('/') &&
-              !cls.includes(':')
+              cls.length > 3 &&
+              // Avoid dynamic/utility classes
+              !cls.match(/^(hover|focus|active|text-|bg-|p-|m-|flex|grid|w-|h-|border)/) &&
+              !/[[\]()\\\/:]/.test(cls) &&
+              !cls.includes('_') &&
+              !cls.match(/\d/) // Avoid classes with numbers (often dynamic)
             )
-            .map(cls => this.sanitizeSelector(cls));
+            .slice(0, 3); // Take up to 3 most specific classes
 
-          if (safeClasses.length) {
-            selector += '.' + safeClasses.join('.');
+          if (goodClasses.length > 0) {
+            selector += '.' + goodClasses.join('.');
           }
         }
 
-        // Add nth-child if there are siblings
-        try {
-          const siblings = current.siblings(selector).add(current);
-          if (siblings.length > 1) {
-            const index = siblings.index(current) + 1;
-            selector += `:nth-child(${index})`;
-          }
-        } catch (e) {
-          // If selector is invalid, just use the tag name with nth-child
-          const index = current.parent().children().index(current) + 1;
-          selector = `${current[0].tagName.toLowerCase()}:nth-child(${index})`;
+        // Add position only if needed
+        const siblings = current.siblings(selector).addBack();
+        if (siblings.length > 1) {
+          const index = siblings.index(current) + 1;
+          selector += `:nth-child(${index})`;
         }
-      }
 
-      // Validate selector before adding it
-      try {
-        this.$(selector);
         path.unshift(selector);
-      } catch (e) {
-        // If invalid, fall back to basic tag selector with nth-child
-        const index = current.parent().children().index(current) + 1;
-        path.unshift(`${current[0].tagName.toLowerCase()}:nth-child(${index})`);
+        current = current.parent();
+        maxAncestors--;
       }
 
-      current = current.parent();
-
-      // Check if we've found a unique ancestor
-      try {
-        if (current.length && path.length > 0) {
-          const testSelector = path.join(' > ');
-          if (this.$(testSelector).length === 1) {
-            foundUniqueAncestor = true;
-          }
-        }
-      } catch (e) {
-        continue;
+      // If path is empty (shouldn't happen), fallback to basic selector
+      if (path.length === 0) {
+        const tag = $el.prop('tagName').toLowerCase();
+        const index = $el.parent().children().index($el) + 1;
+        return `${tag}:nth-child(${index})`;
       }
-    }
 
-    // Final validation of the complete selector
-    try {
-      const finalSelector = path.join(' > ');
-      this.$(finalSelector); // Test if valid
-      return finalSelector;
-    } catch (e) {
-      // Ultimate fallback - just return a very basic selector
-      return `${$el[0].tagName.toLowerCase()}:nth-child(${$el.parent().children().index($el) + 1})`;
+      return path.join(' > ');
+
+    } catch (error) {
+      console.warn('Selector generation failed, using fallback:', error);
+      const tag = $el.prop('tagName').toLowerCase();
+      const index = $el.parent().children().index($el) + 1;
+      return `${tag}:nth-child(${index})`;
+    } finally {
+      const duration = performance.now() - startTime;
+      if (duration > 5) {
+        console.warn(`Slow selector generation: ${duration.toFixed(1)}ms for ${$el.prop('tagName')}`);
+      }
     }
   }
 
@@ -290,6 +298,8 @@ class PageSnapshot {
   }
 
   async saveDebugFiles() {
+    const startTime = Date.now();
+    
     const testDir = path.join(__dirname, 'test');
     if (!fs.existsSync(testDir)) {
       fs.mkdirSync(testDir);
@@ -344,6 +354,7 @@ class PageSnapshot {
     );
 
     console.log(`Debug files saved with timestamp: ${timestamp}`);
+    console.log(`Debug file saving took ${Date.now() - startTime}ms`);
     return timestamp;
   }
 
@@ -358,6 +369,8 @@ class PageSnapshot {
   }
 
   async generateTextView(page) {
+    const startTime = Date.now();
+    
     if (!this.$) {
       console.log('Loading page HTML for text view generation...');
       await this.loadPageHtml(page);
@@ -418,7 +431,7 @@ console.log('html loaded')
     }
 
     // Remove common HTML tags but keep important attributes and all content
-    return fullSource
+    const result = fullSource
       // Simple tag removals for elements with attributes we want to keep
       .replace(/<a/g, '')
       .replace(/<div/g, '')
@@ -456,6 +469,9 @@ console.log('html loaded')
       // Clean up excess whitespace
       .replace(/\s+/g, ' ')
       .trim();
+
+    console.log(`Text view generation took ${Date.now() - startTime}ms`);
+    return result;
   }
 
   async loadPageHtml(page) {
@@ -761,6 +777,7 @@ console.log('html loaded')
   }
 
   async generatePageMaps(page) {
+    const mapsStartTime = Date.now();
     const maps = await this._generateMapsFromCheerio(
       this.$, 
       this.snapshot.shadowDOM,
@@ -770,10 +787,28 @@ console.log('html loaded')
     this.snapshot.interactive = maps.interactive;
     this.snapshot.content = maps.content;
     
+    console.log(`Generated maps with:
+      - ${maps.interactive.inputs.length} inputs
+      - ${maps.interactive.buttons.length} buttons 
+      - ${maps.interactive.links.length} links
+      - ${maps.content.length} content items
+      Time taken: ${Date.now() - mapsStartTime}ms`);
+    
     return maps;
   }
 
   _generateMapsFromCheerio($, shadowDOM = null, iframeData = null, baseSelector = '') {
+    const startTime = Date.now();
+    let lastTime = startTime;
+    
+    const logTimeDiff = (label) => {
+      const now = Date.now();
+      const diff = now - lastTime;
+      const totalDiff = now - startTime;
+      console.log(`${label} took ${diff}ms (total: ${totalDiff}ms)`);
+      lastTime = now;
+    };
+
     const interactive = {
       inputs: [],
       buttons: [],
@@ -781,15 +816,17 @@ console.log('html loaded')
     };
     const content = [];
 
+    // Log initial setup time
+    logTimeDiff('Initial setup');
+
     // Helper function to process selector
     const processSelector = (originalSelector) => {
       let finalSelector = originalSelector;
       if (baseSelector) {
-        // Just append the element's selector to the base selector
         finalSelector = `${baseSelector} > ${originalSelector}`;
       }
 
-      if (finalSelector.length <= 500) {
+      if (finalSelector.length <= 50) {
         return finalSelector;
       }
       const shortSelector = `__SELECTOR__${++this.selectorCounter}`;
@@ -797,12 +834,25 @@ console.log('html loaded')
       return shortSelector;
     };
 
+    logTimeDiff('Selector processor setup');
+
+    // Count total elements before processing
+    const totalElements = $($.root()).find('*').length;
+    console.log(`Processing ${totalElements} elements...`);
+
     // Process elements - use root() instead of body to avoid html > body prefix
+    let processedCount = 0;
+    const batchSize = 1000;
+    const logProgress = () => {
+      console.log(`Processed ${processedCount}/${totalElements} elements (${Math.round(processedCount/totalElements*100)}%)`);
+    };
+
     $($.root()).children().find('*').addBack().each((_, element) => {
       const $el = $(element);
       
-      // Skip script and style elements
+      // Skip script and style elements early
       if (['script', 'style', 'noscript'].includes(element.tagName.toLowerCase())) {
+        processedCount++;
         return;
       }
 
@@ -883,69 +933,117 @@ console.log('html loaded')
         });
       }
 
-      const isStructural = ['main', 'article', 'section', 'header', 'footer', 'nav', 'aside'].includes(element.tagName.toLowerCase());
-      if (isStructural) {
-        content.push({
-          type: 'structure',
-          tag: element.tagName.toLowerCase(),
-          role: $el.attr('role'),
-          selector: selector,
-          'aria-label': $el.attr('aria-label')
-        });
+      processedCount++;
+      if (processedCount % batchSize === 0) {
+        logProgress();
+        logTimeDiff(`Processed batch of ${batchSize} elements`);
       }
     });
 
+    logTimeDiff('Main element processing');
+
     // Process shadow DOM
     if (shadowDOM) {
-      shadowDOM.forEach(shadowTree => {
+      console.log(`Processing ${shadowDOM.length} shadow DOM trees...`);
+      shadowDOM.forEach((shadowTree, index) => {
+        console.log(`Processing shadow DOM tree ${index + 1}/${shadowDOM.length}`);
         const $shadow = cheerio.load(shadowTree.content);
-        const shadowMaps = this._generateMapsFromCheerio($shadow, null, null, shadowTree.hostElement.tagName);
+        const shadowMaps = this._generateMapsFromCheerio($shadow, null, null);
         
-        const currentPath = `${shadowTree.hostElement.tagName} > shadow-root`;
-        
-        // Add shadow paths to interactive elements
+        // Process interactive elements
         Object.keys(shadowMaps.interactive).forEach(key => {
           shadowMaps.interactive[key].forEach(item => {
-            item.shadowPath = `${currentPath} > ${item.selector}`;
-            item.selector = `${shadowTree.hostElement.tagName} > shadow-root > ${item.selector}`;
-            interactive[key].push(item);
+            const { selector, ...rest } = item;
+            
+            // If this element has its own shadow DOM, skip it - we'll process it in nested loop
+            if (shadowTree.shadowTrees?.some(tree => 
+              tree.hostElement.tagName.toLowerCase() === item.tag?.toLowerCase()
+            )) {
+              return;
+            }
+
+            interactive[key].push({
+              ...rest,
+              hostSelector: shadowTree.hostElement.tagName,
+              shadowPath: [this.cleanShadowSelector(item.selector)]
+            });
           });
         });
 
-        // Add shadow paths to content elements
-        shadowMaps.content.forEach(item => {
-          item.shadowPath = `${currentPath} > ${item.tag}`;
-          item.selector = `${shadowTree.hostElement.tagName} > shadow-root > ${item.selector}`;
-          content.push(item);
-        });
+        // Process nested shadow DOMs
+        if (shadowTree.shadowTrees) {
+          shadowTree.shadowTrees.forEach(nestedShadow => {
+            const $nestedShadow = cheerio.load(nestedShadow.content);
+            const nestedMaps = this._generateMapsFromCheerio($nestedShadow, null, null);
+
+            Object.keys(nestedMaps.interactive).forEach(key => {
+              nestedMaps.interactive[key].forEach(item => {
+                const { selector, ...rest } = item;
+                interactive[key].push({
+                  ...rest,
+                  hostSelector: shadowTree.hostElement.tagName,
+                  shadowPath: [
+                    nestedShadow.hostElement.tagName,
+                    this.cleanShadowSelector(item.selector)
+                  ]
+                });
+              });
+            });
+          });
+        }
       });
+      logTimeDiff('Shadow DOM processing');
     }
 
     // Process iframes
     if (iframeData) {
-      iframeData.forEach(iframe => {
+      console.log(`Processing ${iframeData.length} iframes...`);
+      iframeData.forEach((iframe, index) => {
+        console.log(`Processing iframe ${index + 1}/${iframeData.length}`);
         const $iframe = cheerio.load(iframe.content);
         const iframeMaps = this._generateMapsFromCheerio($iframe, null, null, `iframe[src="${iframe.src}"]`);
         
-        // Add iframe paths to interactive elements
+        // Add iframe paths...
         Object.keys(iframeMaps.interactive).forEach(key => {
-          iframeMaps.interactive[key].forEach(item => {
-            item.iframePath = `iframe[src="${iframe.src}"] > ${item.selector}`;
-            item.selector = `iframe[src="${iframe.src}"] > ${item.selector}`;
-            interactive[key].push(item);
-          });
+          interactive[key].push(...iframeMaps.interactive[key]);
         });
-
-        // Add iframe paths to content elements
-        iframeMaps.content.forEach(item => {
-          item.iframePath = `iframe[src="${iframe.src}"] > ${item.tag}`;
-          item.selector = `iframe[src="${iframe.src}"] > ${item.selector}`;
-          content.push(item);
-        });
+        content.push(...iframeMaps.content);
       });
+      logTimeDiff('Iframe processing');
     }
 
+    const timeTaken = Date.now() - startTime;
+    console.log(`Cheerio map generation completed in ${timeTaken}ms${baseSelector ? ` for ${baseSelector}` : ''}`);
+    console.log(`Final counts:
+      - Inputs: ${interactive.inputs.length}
+      - Buttons: ${interactive.buttons.length}
+      - Links: ${interactive.links.length}
+      - Content items: ${content.length}
+    `);
+    
     return { interactive, content };
+  }
+
+  cleanShadowSelector(selector) {
+    // Remove html and body from shadow DOM selectors
+    return selector
+      .replace(/^html\s*>\s*/, '')  // Remove html > from start
+      .replace(/^body\s*>\s*/, '')  // Remove body > from start
+      .replace(/>\s*body\s*>/g, '>')  // Remove body > from middle
+      .replace(/>\s*html\s*>/g, '>')  // Remove html > from middle
+      .trim();
+  }
+
+  getElementKey(hostSelector, shadowPath, type, attributes) {
+    return JSON.stringify({
+      hostSelector,
+      shadowPath: shadowPath.join('->'),
+      type,
+      // Include relevant attributes that identify unique elements
+      placeholder: attributes.placeholder,
+      name: attributes.name,
+      id: attributes.id
+    });
   }
 }
 
@@ -958,7 +1056,7 @@ if (require.main === module) {
   (async () => {
     let browser;
     try {
-      const url = 'https://www.anonyig.com';
+      const url = 'https://www.reddit.com';
       console.log(`Testing PageSnapshot with URL: ${url}`);
 
       console.log('Launching browser...');
