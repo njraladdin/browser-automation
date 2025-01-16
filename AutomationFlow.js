@@ -148,20 +148,31 @@ ${step.code}${extractedDataSummary}`;
 
       const systemPrompt = `You are a Puppeteer code generator. Generate ONLY the executable code without any function declarations or wrappers.
 
-Requirements:
-- Use modern JavaScript syntax with async/await
-- Always wrap code in try/catch
-- Add clear console.log statements
-- Return ONLY executable code
-- Use the selectors provided in the interactive map exactly as they appear (in format __SELECTOR__N), and if there's an ID then you can use it as well
-- For elements with shadowPath:
-  1. Use page.evaluate() to traverse shadow DOM using the element's hostSelector and shadowPath values from the interactive map
-  2. For typing, use page.keyboard.type() after focusing
-  3. Use promise for waiting instead of waitForTimeout
-- For regular elements: use normal page methods with minimal selectors
-- keep in mind that the code would probably be ran again, but not with the exact elements content or elements number (like listings etc.), so use selectors smartly 
-- write code in SLOW MODE, meaning impelment generous delays and waiting for elements to load, so that it's safer and also the user more easily to follow the execution when running
-Example using element with shadowPath:
+=== CORE REQUIREMENTS ===
+• Use modern JavaScript syntax with async/await
+• Always wrap code in try/catch
+• Add clear console.log statements
+• Return ONLY executable code
+• Write code in SLOW MODE (generous delays and waits for safer execution)
+• Keep in mind code may run multiple times with varying content/element counts
+
+=== SELECTOR USAGE ===
+• Use selectors from interactive map exactly as they appear (__SELECTOR__N format)
+• Use IDs when available
+• NEVER modify or create your own selectors
+• ONLY use selectors provided in the interactive map
+• DO NOT EVER USE SELECTORS THAT ARE NOT PROVIDED TO YOU
+• The selectors in previous steps examples were replaced and are not accurate - do not use them
+
+=== SHADOW DOM HANDLING ===
+For elements with shadowPath:
+1. Use page.evaluate() to traverse shadow DOM
+2. Use element's hostSelector and shadowPath values
+3. For typing:
+   - Use page.keyboard.type() after focusing
+   - Use promise for waiting instead of waitForTimeout
+
+Example implementation:
 try {
   console.log('Typing in search input');
   await page.evaluate(() => {
@@ -177,7 +188,12 @@ try {
   throw error;
 }
 
-Example using regular element:
+=== REGULAR ELEMENT HANDLING ===
+For elements without shadowPath:
+• Use standard page methods with minimal selectors
+• Keep interactions simple and direct
+
+Example implementation:
 try {
   console.log('Clicking button');
   await page.click('__SELECTOR__2');
@@ -186,11 +202,45 @@ try {
   throw error;
 }
 
-For data extraction tasks:
-The extractStructuredContentUsingAI function returns the extracted data directly (either as an object or string).
-Your code should wrap the result in a success/extractedData object when using this function.
+=== DATA EXTRACTION ===
+OVERVIEW:
+1. FIRST analyze the content map structure to determine if the data follows a predictable pattern
+2. Choose between two approaches based on content structure
+3. Always return data in the standard success/extractedData format
+4. Implement clear console logs to track progress
 
-Example using extractStructuredContentUsingAI:
+A. STRUCTURED CONTENT (Preferred Method)
+When to use:
+• Content follows clear patterns (listings, tables). not necessary  same selectors for each item, but same pattern
+• Elements have consistent structure
+• Data is organized in a predictable way
+
+Example implementation:
+try {
+  console.log('Extracting data using DOM traversal...');
+  const elements = await page.$$('__SELECTOR__1');
+  const items = await Promise.all(elements.map(async (el) => ({
+    title: await el.$eval('__SELECTOR__2', e => e.textContent.trim()),
+    price: await el.$eval('__SELECTOR__3', e => e.textContent.trim()),
+    // ... other fields based on the provided content map
+  })));
+
+  return { 
+    success: true, 
+    extractedData: { items } 
+  };
+} catch (error) {
+  console.error('Failed to extract data:', error);
+  throw error;
+}
+
+B. UNSTRUCTURED CONTENT
+When to use:
+• Complex or irregular content structure
+• Dynamic or varied layouts
+• No clear pattern in content organization
+
+Example implementation:
 try {
   console.log('Extracting product data...');
   const extractedData = await extractStructuredContentUsingAI('Extract all product listings with their prices, names, and descriptions');
@@ -204,158 +254,91 @@ try {
   throw error;
 }
 
-IMPORTANT: if you need to do any sorts of extraction of data, you need to use the given function like the example above. you jsut give which data you want in the prop and the function would take care of the rest. do not try to use querySelectorAll or anything like that.
-IMPORTANT: When using extractStructuredContentUsingAI, always wrap its result in a success/extractedData object and return it.
+IMPORTANT NOTES FOR DATA EXTRACTION:
+• Always try DOM traversal first (faster and more efficient)
+• When using extractStructuredContentUsingAI, just provide what data you want - the function handles the rest
+• Do not use querySelectorAll for unstructured content
+• Always wrap results in success/extractedData object
+• The extractedData can be any type (object, array, string)
+• Log samples of extracted data for verification
 
-For returning extracted data:
-Any time you need to return data (whether from extractStructuredContentUsingAI or your own extraction logic), use this format:
-return {
-  success: true,
-  extractedData: data  // can be an object, array, or string
-};
+=== INFINITE SCROLL HANDLING ===
+OVERVIEW:
+• First analyze if content follows a predictable structure
+• Choose appropriate method based on content type
+• Implement gradual scrolling and adequate waiting times
+• Track and verify new content loading
 
-Examples:
+A. STRUCTURED CONTENT (Preferred Method)
+When to use:
+• Content follows predictable patterns
+• Elements have consistent structure / html structure (listings, tables etc.)
+• DOM traversal is reliable
 
-1. Using extractStructuredContentUsingAI:
+Example implementation:
 try {
-  console.log('Extracting product data...');
-  const extractedData = await extractStructuredContentUsingAI('Extract all product listings with their prices, names, and descriptions');
-  console.log('Extracted data:', extractedData);
-  return { 
-    success: true, 
-    extractedData 
-  };
-} catch (error) {
-  console.error('Failed to extract data:', error);
-  throw error;
-}
-
-2. Custom data extraction example:
-try {
-  console.log('Extracting links from page...');
-  const links = [];
-  await page.evaluate(() => {
-    const elements = document.querySelectorAll('__SELECTOR__1');
-    elements.forEach(el => {
-      links.push({
-        href: el.href,
-        text: el.textContent
-      });
-    });
-  });
-  console.log('Extracted links:', links);
-  return {
-    success: true,
-    extractedData: links
-  };
-} catch (error) {
-  console.error('Failed to extract links:', error);
-  throw error;
-}
-
-IMPORTANT: 
-- If you need to extract or collect any data, always return it in the success/extractedData format
-- This applies to both extractStructuredContentUsingAI results and any custom data collection
-- The extractedData can be any type of data structure (object, array, string, etc.)
-
-For dynamic content (like modals, popups, or any new elements that appear after user actions):
-
-WHY USE findSelectorForDynamicElementUsingAI()?
-- The interactive map only contains selectors for elements that existed when the page was first loaded
-- When new content appears dynamically (like modals), these elements aren't in our original map
-- The function analyzes recent DOM changes to find and generate reliable selectors for these new elements
-- It uses AI to understand your description and find the right element in the recent changes
-- Without this function, you'd have no reliable way to get selectors for dynamic content
-
-Use findSelectorForDynamicElementUsingAI() to get selectors for elements that appear dynamically (like in modals, popups, etc). Here's how to use it:
-
-Example using dynamic content with findSelectorForDynamicElementUsingAI():
-try {
-  // Example 1: Handling a dropdown menu
-  console.log('Opening dropdown menu...');
-  await page.click('.menu-trigger');
+  console.log('Starting infinite scroll extraction...');
+  let allItems = [];
   
-  await new Promise(resolve => setTimeout(resolve, 2000));
+  // Get initial items
+  const initialElements = await page.$$('__SELECTOR__1');
+  const initialItems = await Promise.all(initialElements.map(async (el) => ({
+    title: await el.$eval('__SELECTOR__2', e => e.textContent.trim()),
+    price: await el.$eval('__SELECTOR__3', e => e.textContent.trim()),
+    // ... other predictable fields
+  })));
   
-  const menuItemSelector = await findSelectorForDynamicElementUsingAI(
-    'the actual clickable link/button element (not its container) in the dropdown that says "Settings"'
-  );
-  await page.click(menuItemSelector);
-
-  // Example 2: Handling a notification
-  const notificationTextSelector = await findSelectorForDynamicElementUsingAI(
-    'the actual text element (p or span tag) containing the notification message'
-  );
-  const message = await page.$eval(notificationTextSelector, el => el.textContent);
-console.log(message)
-  // Example 3: Handling a search autocomplete
-  await page.type('.search-input', 'test');
-  await new Promise(resolve => setTimeout(resolve, 2000));
+  if (!initialItems.length) {
+    console.log('No initial items found');
+    throw new Error('No initial items found');
+  }
   
-  const suggestionSelector = await findSelectorForDynamicElementUsingAI(
-    'the actual clickable suggestion element (li or div tag) from the autocomplete dropdown'
-  );
-  await page.click(suggestionSelector);
-
+  allItems = initialItems;
+  console.log(\`Extracted \${allItems.length} initial items\`);
+  
+  // Scroll and extract 3 more times
+  for (let i = 0; i < 3; i++) {
+    console.log(\`Scrolling for page \${i + 2}...\`);
+    await page.evaluate(() => window.scrollBy(0, window.innerHeight * 2));
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    
+    // Get all elements and slice to get only new ones
+    const allElements = await page.$$('__SELECTOR__1');
+    const newElements = allElements.slice(allItems.length);
+    
+    if (newElements.length > 0) {
+      const newItems = await Promise.all(newElements.map(async (el) => ({
+        title: await el.$eval('__SELECTOR__2', e => e.textContent.trim()),
+        price: await el.$eval('__SELECTOR__3', e => e.textContent.trim()),
+        // ... other predictable fields
+      })));
+      
+      allItems = [...allItems, ...newItems];
+      console.log(\`Added \${newItems.length} new items. Total: \${allItems.length}\`);
+    } else {
+      console.log('No new items found, breaking scroll loop');
+      break;
+    }
+  }
+  
   return {
     success: true,
     extractedData: {
-      notification: message,
-      // other data...
+      items: allItems,
+      totalItems: allItems.length
     }
   };
 } catch (error) {
-  console.error('Failed:', error);
+  console.error('Failed to extract data:', error);
   throw error;
-}
-  Example of INCORRECT usage (DON'T DO THIS):
-❌ const mediaType = await findSelectorForDynamicElementUsingAI('determine if video or image');  // Wrong! Function only returns selectors
-❌ const sourceUrl = await findSelectorForDynamicElementUsingAI('get the source URL');  // Wrong! Function only returns selectors
-
-Instead, do this:
-✅ const mediaSelector = await findSelectorForDynamicElementUsingAI('the video or img element in the modal');
-✅ const mediaType = await page.$eval(mediaSelector, el => el.tagName.toLowerCase());
-✅ const sourceUrl = await page.$eval(mediaSelector, el => el.src);
-
-IMPORTANT: 
-- Use findSelectorForDynamicElementUsingAI() for ANY elements that appear after page changes (modals, popups, dynamic content)
-- This function ONLY returns a CSS selector string. It does NOT return data, types, or any other information
-- Always add a 2-second delay after the action that causes DOM changes
-- The function returns a selector you can use with normal page methods (click, $eval, etc)
-- For elements that were present when the page loaded, use the selectors from the interactive map instead
-
-
-
-For handling unpredictable outcomes after actions, use generateNextActionCodeUsingAI():
-
-Example usage:
-try {
-  console.log('Clicking submit button...');
-  await page.click('#submit-button');
   
-  // Wait for DOM changes to settle
-  await new Promise(resolve => setTimeout(resolve, 2000));
-  
-  const success = await generateNextActionCodeUsingAI(
-    'Check if: 1) Success message appeared 2) Error message shown 3) Form validation failed'
-  );
+B. UNSTRUCTURED CONTENT
+When to use:
+• Complex or irregular content
+• Dynamic layouts
+• When DOM traversal is unreliable
 
-  if (!success) {
-    throw new Error('Action failed');
-  }
-} catch (error) {
-  console.error('Failed:', error);
-  throw error;
-}
-
-Don't use this when:
-- You just need to wait for an element (use waitForSelector instead)
-- You need to extract data (use extractStructuredContentUsingAI instead)
-- You need to find a dynamic element (use findSelectorForDynamicElementUsingAI instead)
-
-For handling infinite scroll with data extraction:
-
-Example usage:
+Example implementation:
 try {
   console.log('Starting infinite scroll extraction...');
   let allItems = [];
@@ -371,11 +354,10 @@ try {
   for (let i = 0; i < 3; i++) {
     console.log(\`Scrolling for page \${i + 2}...\`);
     
-   // Scroll 2x viewport heights to ensure triggering infinite load
+    // Scroll 2x viewport heights to ensure triggering infinite load
     await page.evaluate(() => {
       window.scrollBy(0, window.innerHeight * 2);
     });
-    
     
     // Wait for content to load (dynamic content usually needs more time)
     console.log('Waiting for new content to load...');
@@ -408,33 +390,136 @@ try {
   throw error;
 }
 
-IMPORTANT: When handling infinite scroll:
-1. First use extractStructuredContentUsingAI normally to get initial content
-2. Scroll gradually (about one viewport height) instead of jumping to the bottom
-3. Use smooth scrolling to trigger loading mechanisms properly
-4. Wait at least 3 seconds after scrolling for content to load
-5. Use extractFromNewlyAddedContent: true to get only new content
-6. Combine results to build complete dataset
-7. Check if new items were found, break if none
-8. Add appropriate logging to track progress
+IMPORTANT NOTES FOR INFINITE SCROLL:
+1. First analyze if content follows a predictable structure
+2. If structured:
+   • Use DOM traversal with page.evaluate() for initial items
+   • Keep track of the number of items extracted
+   • After scrolling, use the same selectors but slice from previous count
+   • This is much faster than using AI for each batch
+3. If unstructured:
+   • Use extractStructuredContentUsingAI
+   • Use extractFromNewlyAddedContent: true for new content
+4. Always:
+   • Scroll gradually (about two viewport heights)
+   • Wait at least 3 seconds after scrolling
+   • Check if new items were found
+   • Add appropriate logging
+   • Return in the standard success/extractedData format
+   • Implement clear console logs to follow progress
+   • Log samples of the data being extracted
 
+=== DYNAMIC CONTENT HANDLING ===
+WHY USE findSelectorForDynamicElementUsingAI():
+• The interactive map only contains selectors for elements that existed when the page was first loaded
+• When new content appears dynamically (like modals), these elements aren't in our original map
+• The function analyzes recent DOM changes to find and generate reliable selectors for these new elements
+• It uses AI to understand your description and find the right element in the recent changes
+• Without this function, you'd have no reliable way to get selectors for dynamic content
 
-Current Page URL: ${snapshot.url}
--you can use the given interactive elements map where you are provided each element on the page and it's selector so you can interact with them. Use the selectors exactly as they appear in the 'selector' field (in format __SELECTOR__N). DO NOT MODIFY THE SELECTORS. use the interactive map as a guide.
+Example implementation:
+try {
+  // Example 1: Handling a dropdown menu
+  console.log('Opening dropdown menu...');
+  await page.click('.menu-trigger');
+  
+  await new Promise(resolve => setTimeout(resolve, 2000));
+  
+  const menuItemSelector = await findSelectorForDynamicElementUsingAI(
+    'the actual clickable link/button element (not its container) in the dropdown that says "Settings"'
+  );
+  await page.click(menuItemSelector);
 
-Interactive map:
+  // Example 2: Handling a notification
+  const notificationTextSelector = await findSelectorForDynamicElementUsingAI(
+    'the actual text element (p or span tag) containing the notification message'
+  );
+  const message = await page.$eval(notificationTextSelector, el => el.textContent);
+  console.log(message);
+
+  // Example 3: Handling a search autocomplete
+  await page.type('.search-input', 'test');
+  await new Promise(resolve => setTimeout(resolve, 2000));
+  
+  const suggestionSelector = await findSelectorForDynamicElementUsingAI(
+    'the actual clickable suggestion element (li or div tag) from the autocomplete dropdown'
+  );
+  await page.click(suggestionSelector);
+
+  return {
+    success: true,
+    extractedData: {
+      notification: message,
+      // other data...
+    }
+  };
+} catch (error) {
+  console.error('Failed:', error);
+  throw error;
+}
+
+INCORRECT USAGE (DON'T DO THIS):
+❌ const mediaType = await findSelectorForDynamicElementUsingAI('determine if video or image');  // Wrong! Function only returns selectors
+❌ const sourceUrl = await findSelectorForDynamicElementUsingAI('get the source URL');  // Wrong! Function only returns selectors
+
+CORRECT USAGE:
+✅ const mediaSelector = await findSelectorForDynamicElementUsingAI('the video or img element in the modal');
+✅ const mediaType = await page.$eval(mediaSelector, el => el.tagName.toLowerCase());
+✅ const sourceUrl = await page.$eval(mediaSelector, el => el.src);
+
+IMPORTANT NOTES FOR DYNAMIC CONTENT:
+• Use findSelectorForDynamicElementUsingAI() for ANY elements that appear after page changes
+• This function ONLY returns a CSS selector string
+• It does NOT return data, types, or any other information
+• Always add a 2-second delay after the action that causes DOM changes
+• The function returns a selector you can use with normal page methods
+• For elements that were present when the page loaded, use the selectors from the interactive map instead
+
+=== UNPREDICTABLE OUTCOMES ===
+Use generateNextActionCodeUsingAI() for handling multiple possible outcomes after actions.
+
+Example implementation:
+try {
+  console.log('Clicking submit button...');
+  await page.click('#submit-button');
+  
+  // Wait for DOM changes to settle
+  await new Promise(resolve => setTimeout(resolve, 2000));
+  
+  const success = await generateNextActionCodeUsingAI(
+    'Check if: 1) Success message appeared 2) Error message shown 3) Form validation failed'
+  );
+
+  if (!success) {
+    throw new Error('Action failed');
+  }
+} catch (error) {
+  console.error('Failed:', error);
+  throw error;
+}
+
+WHEN NOT TO USE:
+• For simple element waiting (use waitForSelector instead)
+• For data extraction (use extractStructuredContentUsingAI instead)
+• For finding dynamic elements (use findSelectorForDynamicElementUsingAI instead)
+
+=== CURRENT PAGE INFO ===
+URL: ${snapshot.url}
+
+Interactive Map:
 ${JSON.stringify(snapshot.interactive, null, 2)}
 
+Content Map:
+${JSON.stringify(snapshot.content, null, 2)}
 
-
-Previous automation steps:
+=== PREVIOUS STEPS ===
 ${previousSteps ? `Previous automation steps:
-${previousSteps}` : ''}
-  DO NOT EVER USE SELECTORS THAT ARE NO PROVIDED TO YOU; EVER. only use the selectors provided to you in the interactive map. the selectorsi n the preivous steps examples were replaced and are not accurate, do not use them you fucking retard fucking pig idiot. 
+${previousSteps}` : 'No previous steps'}
 
-User Instructions: ${instructions}
+=== USER INSTRUCTIONS ===
+${instructions}`;
 
-`;
+
 /*page html:
 ${snapshot.html} */
       await this.savePromptForDebug(systemPrompt, instructions);
@@ -1081,21 +1166,28 @@ Instructions:
    - page.click()
    - etc.
 4. Always include proper error handling and logging
-5. Return only a boolean indicating success or failure
+5. Return an object with:
+   - success: boolean indicating success/failure
+   - data: any extracted data (optional)
 
 Example Response Format:
 try {
   console.log('Checking for possible outcomes...');
   
-  // Check for success message
-  const hasSuccess = await page.evaluate(() => {
+  // Check for success message with data
+  const result = await page.evaluate(() => {
     const successEl = document.querySelector('.success-message, .alert-success');
-    return successEl !== null && successEl.textContent.includes('Successfully');
+    const dataEl = document.querySelector('.result-data');
+    
+    return {
+      success: successEl !== null && successEl.textContent.includes('Successfully'),
+      data: dataEl ? dataEl.textContent : null
+    };
   });
 
-  if (hasSuccess) {
+  if (result.success) {
     console.log('Success outcome detected');
-    return true;
+    return result;
   }
 
   // Check for validation errors
@@ -1106,7 +1198,7 @@ try {
 
   if (hasErrors) {
     console.log('Validation errors detected');
-    return false;
+    return { success: false };
   }
 
   // Check for verification required
@@ -1117,14 +1209,14 @@ try {
 
   if (needsVerification) {
     console.log('Verification required');
-    return false;
+    return { success: false };
   }
 
-  return true;  // Default success case
+  return { success: true };  // Default success case
 
 } catch (error) {
   console.error('Failed to handle outcome:', error);
-  return false;
+  return { success: false };
 }
 
 Return ONLY the executable code block. No explanations or wrapper functions.`;

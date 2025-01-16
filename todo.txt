@@ -82,17 +82,21 @@ run each benchmark, troubleshoot and improve :
 
     Problem: an error might face the scritp while running due to some change in page structure / it clicks on wrong elements  DONE
       Solutions: 
-        for dynamic elements, allow AI to use a function to find selector from latest page DOM
+        for dynamic elements, allow AI to use a function to find selector from latest page dom
 
 - go to airbnb,scroll to load all listings, extract all listings details 
     Problem: page source is huge. stuck at taking page snapshot, DONE 
        Soltuion: optimize map generation
 
-    Problem: handle infinite scroll for full page
+    Problem: handle infinite scroll for full page, DONE 
        Solutions: 
          add function to extract structured content but only from  new elements on the page (then clear latest changes) 
-         update prompt to tell the AI to use normal html parsing instead of AI to extract content if the html structure is clear 
-         make content extraction happen by AI writing a script not by AI directly
+
+    Problem: extracting content using AI takes too long when infinite scrolling 
+       Solutions: 
+          update prompt to tell the AI to use normal html parsing instead of AI to extract content if the html structure is clear 
+          make content extraction happen by AI writing a script not by AI directly
+          optimize content map size in prompt 
 
 benchmarks: 
 - go to anonymiosu instagram stories, and scrape latest stories media, DONE 
@@ -100,3 +104,6 @@ benchmarks:
 - go to twitter profile, and extract list of tweets until you get 100
 - go to airbnb, search a destination, then extract all data for each pagination page
 
+
+
+so i have an idea. see hwo to extract data, we havea function extractStructuredContentUsingAI that bascially uses gmieni to feed it the whole content then it outptus it in a structured format. this works, and we also use it for infinite loading. so this works but it's slow. im thinking of trying something : if the data we want on the page is in predictbael structure, like a listing or a tbale or wahtever, why not use the other function 
