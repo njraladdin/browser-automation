@@ -118,9 +118,7 @@ class PageSnapshot {
       this.snapshot.timestamp = new Date().toISOString();
 
       // Save debug files
-      const debugStartTime = Date.now();
       await this.saveDebugFiles();
-      console.log(`Debug files saving took ${Date.now() - debugStartTime}ms`);
 
       // Start observing DOM changes AFTER capturing the snapshot
       console.log('Starting DOM observer to track post-snapshot changes...');
@@ -340,7 +338,7 @@ class PageSnapshot {
     );
 
     console.log(`Debug files saved with timestamp: ${timestamp}`);
-    console.log(`Debug file saving took ${Date.now() - startTime}ms`);
+
     return timestamp;
   }
 
@@ -677,26 +675,12 @@ class PageSnapshot {
   }
 
   _generateMapsFromCheerio($, shadowDOM = null, iframeData = null, baseSelector = '') {
-    const startTime = Date.now();
-    let lastTime = startTime;
-    
-    const logTimeDiff = (label) => {
-      const now = Date.now();
-      const diff = now - lastTime;
-      const totalDiff = now - startTime;
-      console.log(`${label} took ${diff}ms (total: ${totalDiff}ms)`);
-      lastTime = now;
-    };
-
     const interactive = {
       inputs: [],
       buttons: [],
       links: [],
     };
     const content = [];
-
-    // Log initial setup time
-    logTimeDiff('Initial setup');
 
     // Helper function to process selector
     const processSelector = (originalSelector) => {
@@ -713,25 +697,12 @@ class PageSnapshot {
       return shortSelector;
     };
 
-    logTimeDiff('Selector processor setup');
-
-    // Count total elements before processing
-    const totalElements = $($.root()).find('*').length;
-    console.log(`Processing ${totalElements} elements...`);
-
     // Process elements - use root() instead of body to avoid html > body prefix
-    let processedCount = 0;
-    const batchSize = 1000;
-    const logProgress = () => {
-      console.log(`Processed ${processedCount}/${totalElements} elements (${Math.round(processedCount/totalElements*100)}%)`);
-    };
-
     $($.root()).children().find('*').addBack().each((_, element) => {
       const $el = $(element);
       
       // Skip script and style elements early
       if (['script', 'style', 'noscript'].includes(element.tagName.toLowerCase())) {
-        processedCount++;
         return;
       }
 
@@ -811,21 +782,11 @@ class PageSnapshot {
           selector: selector
         });
       }
-
-      processedCount++;
-      if (processedCount % batchSize === 0) {
-        logProgress();
-        logTimeDiff(`Processed batch of ${batchSize} elements`);
-      }
     });
-
-    logTimeDiff('Main element processing');
 
     // Process shadow DOM
     if (shadowDOM) {
-      console.log(`Processing ${shadowDOM.length} shadow DOM trees...`);
-      shadowDOM.forEach((shadowTree, index) => {
-        console.log(`Processing shadow DOM tree ${index + 1}/${shadowDOM.length}`);
+      shadowDOM.forEach((shadowTree) => {
         const $shadow = cheerio.load(shadowTree.content);
         const shadowMaps = this._generateMapsFromCheerio($shadow, null, null);
         
@@ -834,7 +795,6 @@ class PageSnapshot {
           shadowMaps.interactive[key].forEach(item => {
             const { selector, ...rest } = item;
             
-            // If this element has its own shadow DOM, skip it - we'll process it in nested loop
             if (shadowTree.shadowTrees?.some(tree => 
               tree.hostElement.tagName.toLowerCase() === item.tag?.toLowerCase()
             )) {
@@ -871,34 +831,20 @@ class PageSnapshot {
           });
         }
       });
-      logTimeDiff('Shadow DOM processing');
     }
 
     // Process iframes
     if (iframeData) {
-      console.log(`Processing ${iframeData.length} iframes...`);
-      iframeData.forEach((iframe, index) => {
-        console.log(`Processing iframe ${index + 1}/${iframeData.length}`);
+      iframeData.forEach((iframe) => {
         const $iframe = cheerio.load(iframe.content);
         const iframeMaps = this._generateMapsFromCheerio($iframe, null, null, `iframe[src="${iframe.src}"]`);
         
-        // Add iframe paths...
         Object.keys(iframeMaps.interactive).forEach(key => {
           interactive[key].push(...iframeMaps.interactive[key]);
         });
         content.push(...iframeMaps.content);
       });
-      logTimeDiff('Iframe processing');
     }
-
-    const timeTaken = Date.now() - startTime;
-    console.log(`Cheerio map generation completed in ${timeTaken}ms${baseSelector ? ` for ${baseSelector}` : ''}`);
-    console.log(`Final counts:
-      - Inputs: ${interactive.inputs.length}
-      - Buttons: ${interactive.buttons.length}
-      - Links: ${interactive.links.length}
-      - Content items: ${content.length}
-    `);
     
     return { interactive, content };
   }
@@ -923,6 +869,13 @@ class PageSnapshot {
       name: attributes.name,
       id: attributes.id
     });
+  }
+
+  clearLatestDOMChanges() {
+    console.log('Clearing latest DOM changes...');
+    const clearedCount = this.latestDOMChanges.length;
+    this.latestDOMChanges = [];
+    console.log(`Cleared ${clearedCount} DOM changes`);
   }
 }
 

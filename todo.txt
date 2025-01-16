@@ -85,12 +85,14 @@ run each benchmark, troubleshoot and improve :
         for dynamic elements, allow AI to use a function to find selector from latest page DOM
 
 - go to airbnb,scroll to load all listings, extract all listings details 
-    Problem: page source is huge. stuck at taking page snapshot, done 
-    Problem: handle infinite scroll
+    Problem: page source is huge. stuck at taking page snapshot, DONE 
+       Soltuion: optimize map generation
+
+    Problem: handle infinite scroll for full page
        Solutions: 
          add function to extract structured content but only from  new elements on the page (then clear latest changes) 
-
-
+         update prompt to tell the AI to use normal html parsing instead of AI to extract content if the html structure is clear 
+         make content extraction happen by AI writing a script not by AI directly
 
 benchmarks: 
 - go to anonymiosu instagram stories, and scrape latest stories media, DONE 

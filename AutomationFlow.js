@@ -5,6 +5,7 @@ const PageSnapshot = require('./PageSnapshot');
 const path = require('path');
 const fs = require('fs');
 const clc = require('cli-color');
+const { jsonrepair } = require('jsonrepair');
 
 class AutomationFlow {
   constructor() {
@@ -352,6 +353,71 @@ Don't use this when:
 - You need to extract data (use extractStructuredContentUsingAI instead)
 - You need to find a dynamic element (use findSelectorForDynamicElementUsingAI instead)
 
+For handling infinite scroll with data extraction:
+
+Example usage:
+try {
+  console.log('Starting infinite scroll extraction...');
+  let allItems = [];
+  
+  // Get initial content
+  const initialData = await extractStructuredContentUsingAI('Extract all product listings with their details');
+  if (initialData.items) {
+    allItems = [...initialData.items];
+    console.log(\`Extracted \${allItems.length} initial items\`);
+  }
+  
+  // Scroll and extract 3 more times
+  for (let i = 0; i < 3; i++) {
+    console.log(\`Scrolling for page \${i + 2}...\`);
+    
+   // Scroll 2x viewport heights to ensure triggering infinite load
+    await page.evaluate(() => {
+      window.scrollBy(0, window.innerHeight * 2);
+    });
+    
+    
+    // Wait for content to load (dynamic content usually needs more time)
+    console.log('Waiting for new content to load...');
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    
+    // Extract only newly loaded content
+    const newData = await extractStructuredContentUsingAI(
+      'Extract all product listings with their details',
+      { extractFromNewlyAddedContent: true }
+    );
+    
+    if (newData.items && newData.items.length > 0) {
+      allItems = [...allItems, ...newData.items];
+      console.log(\`Added \${newData.items.length} new items. Total: \${allItems.length}\`);
+    } else {
+      console.log('No new items found, breaking scroll loop');
+      break;
+    }
+  }
+  
+  return {
+    success: true,
+    extractedData: {
+      items: allItems,
+      totalItems: allItems.length
+    }
+  };
+} catch (error) {
+  console.error('Failed to extract infinite scroll data:', error);
+  throw error;
+}
+
+IMPORTANT: When handling infinite scroll:
+1. First use extractStructuredContentUsingAI normally to get initial content
+2. Scroll gradually (about one viewport height) instead of jumping to the bottom
+3. Use smooth scrolling to trigger loading mechanisms properly
+4. Wait at least 3 seconds after scrolling for content to load
+5. Use extractFromNewlyAddedContent: true to get only new content
+6. Combine results to build complete dataset
+7. Check if new items were found, break if none
+8. Add appropriate logging to track progress
+
 
 Current Page URL: ${snapshot.url}
 -you can use the given interactive elements map where you are provided each element on the page and it's selector so you can interact with them. Use the selectors exactly as they appear in the 'selector' field (in format __SELECTOR__N). DO NOT MODIFY THE SELECTORS. use the interactive map as a guide.
@@ -366,7 +432,9 @@ ${previousSteps ? `Previous automation steps:
 ${previousSteps}` : ''}
   DO NOT EVER USE SELECTORS THAT ARE NO PROVIDED TO YOU; EVER. only use the selectors provided to you in the interactive map. the selectorsi n the preivous steps examples were replaced and are not accurate, do not use them you fucking retard fucking pig idiot. 
 
-User Instructions: ${instructions}`;
+User Instructions: ${instructions}
+
+`;
 /*page html:
 ${snapshot.html} */
       await this.savePromptForDebug(systemPrompt, instructions);
@@ -461,7 +529,7 @@ ${snapshot.html} */
     }
   }
 
-  async extractStructuredContentUsingAI(structurePrompt) {
+  async extractStructuredContentUsingAI(structurePrompt, options = { extractFromNewlyAddedContent: false }) {
     try {
       console.log(clc.cyan('▶ Starting AI content extraction...'));
       
@@ -469,6 +537,7 @@ ${snapshot.html} */
       if (!apiKey) {
         throw new Error('GEMINI_API_KEY not found in environment variables');
       }
+      
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({
         model: "gemini-1.5-flash-8b",
@@ -481,13 +550,39 @@ ${snapshot.html} */
         }
       });
 
-      // Get the content map instead of text view
-      const contentMap = this.pageSnapshot.getContentMap();
+      // Get content based on option
+      let contentToProcess;
+      if (options.extractFromNewlyAddedContent) {
+        console.log(clc.cyan('▶ Extracting from newly added content...'));
+        const latestChanges = this.pageSnapshot.getLatestDOMChanges();
+        
+        if (!latestChanges || latestChanges.length === 0) {
+          console.log(clc.yellow('⚠ No new content found in DOM changes'));
+          return { items: [] };
+        }
+
+        contentToProcess = latestChanges
+          .filter(change => change.addedNodes?.length > 0 || change.contentMap)
+          .map(change => change.contentMap || this.pageSnapshot.createContentMapFromNodes(change.addedNodes))
+          .flat()
+          .filter(Boolean);
+        
+        if (contentToProcess.length === 0) {
+          console.log(clc.yellow('⚠ No processable content found in DOM changes'));
+          return { items: [] };
+        }
+
+        // Clear processed changes after extraction
+        this.pageSnapshot.clearLatestDOMChanges();
+      } else {
+        console.log(clc.cyan('▶ Extracting from current page content...'));
+        contentToProcess = this.pageSnapshot.getContentMap();
+      }
 
       const systemPrompt = `You are an AI assistant that parses webpage content and extracts structured information.
 
       Input Content Map from Webpage:
-      ${JSON.stringify(contentMap, null, 2)}
+      ${JSON.stringify(contentToProcess, null, 2)}
 
       The content map contains structured data where:
       - type: can be 'text', 'media', or 'structure'
@@ -498,6 +593,7 @@ ${snapshot.html} */
       - selector: unique selector for the element
       - role: ARIA role if present
       - aria-label: accessibility label if present
+      ${options.extractFromNewlyAddedContent ? '\nNote: This content represents newly loaded/added content to the page.' : ''}
 
       Instructions for Parsing:
       ${structurePrompt}
@@ -564,18 +660,26 @@ ${snapshot.html} */
       }
 
       fs.writeFileSync(
-        path.join(testDir, `ai_parsed_${timestamp}.txt`),
-        `Structure Prompt:\n${structurePrompt}\n\nContent Map:\n${JSON.stringify(contentMap, null, 2)}\n\nParsed Result:\n${parsedText}`,
+        path.join(testDir, `ai_parsed_${options.extractFromNewlyAddedContent ? 'dynamic_' : ''}${timestamp}.txt`),
+        `Structure Prompt:\n${structurePrompt}\n\nContent Map:\n${JSON.stringify(contentToProcess, null, 2)}\n\nParsed Result:\n${parsedText}`,
         'utf8'
       );
 
       try {
         const result = JSON.parse(parsedText);
-        console.log(clc.green('✓ Successfully parsed content with AI'));
+        console.log(clc.green(`✓ Successfully parsed ${options.extractFromNewlyAddedContent ? 'new' : 'current'} content with AI`));
         return result;
       } catch (e) {
-        console.log(clc.yellow('⚠ AI response was not valid JSON, returning raw text'));
-        return parsedText;
+        console.log(clc.yellow('⚠ AI response was not valid JSON, attempting to repair JSON'));
+        try {
+          const repairedText = jsonrepair(parsedText);
+          const repairedResult = JSON.parse(repairedText);
+          console.log(clc.green(`✓ Successfully repaired and parsed ${options.extractFromNewlyAddedContent ? 'new' : 'current'} content with AI`));
+          return repairedResult;
+        } catch (repairError) {
+          console.log(clc.red('✗ JSON repair failed, returning raw text'));
+          return parsedText;
+        }
       }
 
     } catch (error) {
