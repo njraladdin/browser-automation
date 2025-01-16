@@ -653,6 +653,36 @@ class PageSnapshot {
     return this.snapshot.content; 
   }
 
+  // Change from instance method to static method that accepts content
+  static condenseContentMap(content) {
+    if (!content) {
+      return '';
+    }
+
+    return content
+      .map(item => {
+        let result = '';
+        
+        // Add tag (with fallback) and aria-label if present
+        const tag = item.tag || item.type || 'element';
+        result = `[${tag}${item['aria-label'] ? ` aria-label: ${item['aria-label']}` : ''}${item.selector ? ` selector:"${item.selector}"` : ''}]`;
+        
+        // Add content or src
+        if (item.content) {
+          result += ` ${item.content}`;
+        } else if (item.src) {
+          result += ` src: ${item.src}${item.alt ? ` alt: ${item.alt}` : ''}`;
+        } else {
+          return null;
+        }
+        
+        return result;
+      })
+      .filter(Boolean)
+      .join('\n---\n');
+  }
+
+
   async generatePageMaps(page) {
     const mapsStartTime = Date.now();
     const maps = await this._generateMapsFromCheerio(

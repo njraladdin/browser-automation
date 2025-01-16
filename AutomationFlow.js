@@ -389,7 +389,7 @@ Interactive Map:
 ${JSON.stringify(snapshot.interactive, null, 2)}
 
 Content Map:
-${JSON.stringify(snapshot.content, null, 2)}
+${PageSnapshot.condenseContentMap(snapshot.content)}
 
 === PREVIOUS STEPS ===
 ${previousSteps ? `Previous automation steps:
@@ -527,37 +527,29 @@ ${snapshot.html} */
 
         contentToProcess = latestChanges
           .filter(change => change.addedNodes?.length > 0 || change.contentMap)
-          .map(change => change.contentMap || this.pageSnapshot.createContentMapFromNodes(change.addedNodes))
-          .flat()
-          .filter(Boolean);
-        
-        if (contentToProcess.length === 0) {
-          console.log(clc.yellow('⚠ No processable content found in DOM changes'));
-          return { items: [] };
-        }
-
-        // Clear processed changes after extraction
-        this.pageSnapshot.clearLatestDOMChanges();
+          .map(change => {
+            const contentMap = change.contentMap || 
+              this.pageSnapshot.createContentMapFromNodes(change.addedNodes);
+            return PageSnapshot.condenseContentMap(contentMap);
+          })
+          .filter(Boolean)
+          .join('\n---\n');
       } else {
         console.log(clc.cyan('▶ Extracting from current page content...'));
-        contentToProcess = this.pageSnapshot.getContentMap();
+        contentToProcess = PageSnapshot.condenseContentMap(this.pageSnapshot.getContentMap());
       }
 
       const systemPrompt = `You are an AI assistant that parses webpage content and extracts structured information.
 
-      Input Content Map from Webpage:
-      ${JSON.stringify(contentToProcess, null, 2)}
+      Input Content from Webpage:
+      ${contentToProcess}
 
-      The content map contains structured data where:
-      - type: can be 'text', 'media', or 'structure'
-      - content: the actual text content (for text type)
-      - mediaType: 'image' or 'video' (for media type)
-      - src: source URL (for media type)
-      - tag: HTML tag name
-      - selector: unique selector for the element
-      - role: ARIA role if present
-      - aria-label: accessibility label if present
-      ${options.extractFromNewlyAddedContent ? '\nNote: This content represents newly loaded/added content to the page.' : ''}
+      The content is formatted as:
+      - Each entry starts with [tag_name] indicating the HTML element type
+      - If present, aria-label is included in the tag brackets
+      - Text content follows directly after the tag
+      - Media entries include src: and optional alt: attributes
+      - Entries are separated by ---
 
       Instructions for Parsing:
       ${structurePrompt}
@@ -871,24 +863,27 @@ ${snapshot.html} */
         throw new Error('No DOM changes tracked');
       }
 
-      // Log a summary of the changes
-      console.log('\nLatest Changes Summary:');
-      latestChanges.forEach((change, index) => {
-        console.log(`\nChange ${index + 1}:`);
-        console.log('- Type:', change.type);
-        console.log('- Selector Path:', change.selectorPath);
-        if (change.addedNodes?.length) {
-          console.log('- Added Nodes:', change.addedNodes.length);
-        }
-        if (change.removedNodes?.length) {
-          console.log('- Removed Nodes:', change.removedNodes.length);
-        }
-      });
+      // Process content maps
+      const contentChanges = latestChanges
+        .filter(change => change.contentMap)
+        .map(change => PageSnapshot.condenseContentMap(change.contentMap))
+        .filter(Boolean)
+        .join('\n\n=== New Content Change ===\n\n');
+
+      // Process interactive maps
+      const interactiveChanges = latestChanges
+        .filter(change => change.interactiveMap)
+        .map(change => JSON.stringify(change.interactiveMap, null, 2))
+        .filter(Boolean)
+        .join('\n\n=== New Interactive Change ===\n\n');
 
       const systemPrompt = `You are an AI assistant that finds DOM elements in newly added content.
 
-Latest DOM Changes:
-${JSON.stringify(latestChanges, null, 2)}
+Latest Content Changes:
+${contentChanges}
+
+Latest Interactive Changes:
+${interactiveChanges}
 
 Description of element to find: "${description}"
 
@@ -909,6 +904,18 @@ Example good selectors:
 - For a button: "#app > div.modal > div.media-modal__media > button.media-modal__button--close"
 
 Return ONLY the complete selector string. No explanation, no JSON, just the complete selector path to that specific element in the description.`;
+
+      // Save prompt for testing/debugging
+      const testDir = path.join(__dirname, 'test');
+      if (!fs.existsSync(testDir)) {
+        fs.mkdirSync(testDir);
+      }
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      fs.writeFileSync(
+        path.join(testDir, `selector_prompt_${timestamp}.txt`),
+        systemPrompt,
+        'utf8'
+      );
 
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
