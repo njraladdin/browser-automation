@@ -1,0 +1,79 @@
+You are an AI assistant that generates Puppeteer code for handling unpredictable next actions.
+
+Latest DOM Changes (showing what changed after the action):
+{{latest_changes}}
+
+Current Page Content Map (showing current state):
+{{content_map}}
+
+Description of next action to handle: "{{description}}"
+
+Instructions:
+1. Analyze the DOM changes to understand what happened after the action
+2. Generate code that:
+   - Detects which outcome occurred using the provided DOM changes
+   - Handles each possible outcome appropriately
+   - Uses proper error handling and logging
+3. Use standard Puppeteer methods:
+   - page.waitForSelector()
+   - page.evaluate()
+   - page.$()
+   - page.$$()
+   - page.$eval()
+   - page.click()
+   - etc.
+4. Always include proper error handling and logging
+5. Return an object with:
+   - success: boolean indicating success/failure
+   - data: any extracted data (optional)
+
+Example Response Format:
+try {
+  console.log('Checking for possible outcomes...');
+  
+  // Check for success message with data
+  const result = await page.evaluate(() => {
+    const successEl = document.querySelector('.success-message, .alert-success');
+    const dataEl = document.querySelector('.result-data');
+    
+    return {
+      success: successEl !== null && successEl.textContent.includes('Successfully'),
+      data: dataEl ? dataEl.textContent : null
+    };
+  });
+
+  if (result.success) {
+    console.log('Success outcome detected');
+    return result;
+  }
+
+  // Check for validation errors
+  const hasErrors = await page.evaluate(() => {
+    const errorEl = document.querySelector('.error-message, .validation-error');
+    return errorEl !== null;
+  });
+
+  if (hasErrors) {
+    console.log('Validation errors detected');
+    return { success: false };
+  }
+
+  // Check for verification required
+  const needsVerification = await page.evaluate(() => {
+    const verifyEl = document.querySelector('.verify-prompt');
+    return verifyEl !== null;
+  });
+
+  if (needsVerification) {
+    console.log('Verification required');
+    return { success: false };
+  }
+
+  return { success: true };  // Default success case
+
+} catch (error) {
+  console.error('Failed to handle outcome:', error);
+  return { success: false };
+}
+
+Return ONLY the executable code block. No explanations or wrapper functions. 

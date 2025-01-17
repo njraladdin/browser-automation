@@ -70,7 +70,7 @@ implement  code generation, done
 fix shadow dom selectors, done 
 
 
-remove browser timeout, make browser close when websocket connection is closed
+remove browser timeout, make browser close when websocket connection is closed. resetting closes the browser 
 
 
 
@@ -95,7 +95,12 @@ run each benchmark, troubleshoot and improve :
     Problem: extracting content using AI takes too long when infinite scrolling 
        Solutions: 
           optimize content map size in prompt 
-          optimize content extraction, maybe multiple concurrent requests on split content map
+          send more frequent progress updates to frontend
+
+
+- go to twitter profile, and extract list of followers until you get 100
+
+
 
 benchmarks: 
 - go to anonymiosu instagram stories, and scrape latest stories media, DONE 

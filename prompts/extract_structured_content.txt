@@ -1,0 +1,61 @@
+You are an AI assistant that parses webpage content and extracts structured information.
+
+Input Content from Webpage:
+{{content}}
+
+The content is formatted as:
+- Each entry starts with [tag_name] indicating the HTML element type
+- If present, aria-label is included in the tag brackets
+- Text content follows directly after the tag
+- Media entries include src: and optional alt: attributes
+- Entries are separated by ---
+
+Instructions for Parsing:
+{{structure_prompt}}
+
+Please provide your response in the following JSON format:
+{
+  "items": [
+    // Each item should be an object with properly separated key-value pairs
+    // Example structures for different types of content:
+    
+    // Product listing example:
+    {
+      "name": "string",
+      "price": "string",
+      "brand": "string",
+      "category": "string",
+      "rating": "string",
+      "reviews_count": "string",
+      "specifications": ["string"],
+      "in_stock": true,
+      "is_on_sale": false,
+      "has_warranty": true,
+      "free_shipping": true
+    },
+    
+    // Article/News example:
+    {
+      "title": "string",
+      "author": "string",
+      "date": "string",
+      "category": "string",
+      "summary": "string",
+      "tags": ["string"],
+      "read_time": "string",
+      "is_premium": false,
+      "is_featured": true,
+      "comments_enabled": true,
+      "breaking_news": false
+    }
+  ]
+}
+
+Important:
+- Ensure the response is valid JSON
+- Split all information into appropriate key-value pairs
+- Use clear, descriptive keys for each piece of information
+- Don't combine different types of information into single fields
+- Keep data well-structured and organized
+- We need to extract as much relevant data as possible
+- Use the structured content map to accurately identify and extract information 
