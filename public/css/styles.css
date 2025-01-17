@@ -21,9 +21,9 @@ body {
   top: 0;
   z-index: 100;
   background: white;
-  padding: 15px 25px;
+  padding: 20px 30px;
   border-bottom: 1px solid #ddd;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .header-main {
@@ -37,6 +37,8 @@ body {
 
 .header-left {
   flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .header-left h1 {
@@ -54,29 +56,13 @@ body {
   color: #666;
 }
 
-.btn-logout {
-  color: #666;
-  border: none;
-  background: none;
-  padding: 0;
-  font-size: 13px;
-  text-decoration: underline;
-  cursor: pointer;
-  outline: none;
+#currentProfile {
+  font-weight: 500;
 }
 
-.btn-logout:hover {
-  color: #dc3545;
-}
-
-.header-controls {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-}
-
-.profile-section {
-  display: none;
+.header-right {
+  padding-left: 30px;
+  border-left: 1px solid #eee;
 }
 
 .header-flow {
@@ -95,6 +81,7 @@ body {
   gap: 10px;
   align-items: center;
   max-width: 400px;
+  margin-top: 10px;
 }
 
 .flow-selector select {
@@ -102,6 +89,7 @@ body {
   padding: 8px;
   border-radius: 4px;
   border: 1px solid #ddd;
+  min-width: 200px;
 }
 
 .automation-controls {
@@ -111,32 +99,7 @@ body {
   justify-content: flex-end;
 }
 
-@media (max-width: 768px) {
-  .header-main {
-    flex-direction: column;
-    gap: 15px;
-    align-items: stretch;
-  }
-
-  .profile-section {
-    justify-content: space-between;
-  }
-
-  .flow-controls {
-    flex-direction: column;
-    gap: 15px;
-  }
-
-  .flow-selector {
-    width: 100%;
-  }
-
-  .automation-controls {
-    width: 100%;
-    justify-content: space-between;
-  }
-}
-
+/* Status */
 .status {
   position: fixed;
   top: 84px;
@@ -150,7 +113,7 @@ body {
   transform: translateY(-20px);
   transition: all 0.3s ease;
   z-index: 1000;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
 }
 
 .status.visible {
@@ -158,12 +121,10 @@ body {
   transform: translateY(0);
 }
 
-/* Success variant */
 .status.success {
   background: #4CAF50;
 }
 
-/* Error variant */
 .status.error {
   background: #f44336;
 }
@@ -183,11 +144,13 @@ body {
   border: 1px solid transparent;
 }
 
-/* Primary button - Used for main actions like "New Flow", "Add Step" */
 .btn-primary {
   background: #0066cc;
   color: white;
   border-color: #0066cc;
+  width: fit-content;
+  text-align: center;
+  margin: 0;
 }
 
 .btn-primary:hover {
@@ -201,7 +164,6 @@ body {
   cursor: not-allowed;
 }
 
-/* Secondary button - Used for actions like "Cancel" */
 .btn-secondary {
   background: #f8f9fa;
   color: #444;
@@ -213,42 +175,54 @@ body {
   border-color: #ccc;
 }
 
-/* Play button - Special variant for execution actions */
 .btn-play {
-  background: #0066cc;
+  background: #6f42c1; /* Purple color */
   color: white;
-  border-color: #0066cc;
+  border-color: #553098;
 }
 
 .btn-play:hover {
-  background: #0052a3;
-  border-color: #0052a3;
+  background: #553098;
 }
 
 .btn-play:disabled {
-  background: #99c2e6;
-  border-color: #99c2e6;
+  background: #a98eda;
+  border-color: #a98eda;
   cursor: not-allowed;
 }
 
-/* Delete button */
 .btn-delete {
   background: transparent;
-  color: #dc3545;
-  border-color: #dc3545;
-  padding: 6px 12px;
-  height: 36px;
+  color: #666;
+  border: none;
+  padding: 4px 8px;
+  font-size: 16px;
+  transition: all 0.2s ease;
+  margin-top: 4px;
+  height: auto;
 }
 
 .btn-delete:hover {
-  background: #fff5f5;
+  color: #dc3545;
+  background: transparent;
 }
 
-/* Settings button */
+.btn-delete:disabled {
+  color: #ccc;
+  cursor: not-allowed;
+}
+
+.btn-delete:disabled:hover {
+  color: #ccc;
+}
+
 .btn-settings {
   background: #f8f9fa;
   color: #444;
   border-color: #ddd;
+  position: relative;
+  margin-right: 10px;
+  margin-bottom: 10px;
 }
 
 .btn-settings:hover {
@@ -256,33 +230,25 @@ body {
   border-color: #ccc;
 }
 
-/* Logout button */
 .btn-logout {
-  background: transparent;
   color: #666;
-  border-color: transparent;
-  padding: 4px 8px;
-  height: auto;
+  border: none;
+  background: none;
+  padding: 6px 12px;
   font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+  outline: none;
+  height: auto;
 }
 
 .btn-logout:hover {
   color: #dc3545;
+  background-color: transparent;
+  border-color: transparent;
 }
 
-/* Add button (for new steps) */
-.btn-add {
-  background: #0066cc;
-  color: white;
-  border-color: #0066cc;
-}
-
-.btn-add:hover {
-  background: #0052a3;
-  border-color: #0052a3;
-}
-
-/* Update specific button containers */
+/* Button containers */
 .step-actions {
   display: flex;
   gap: 8px;
@@ -298,32 +264,20 @@ body {
   margin-top: 20px;
 }
 
-.flow-selector {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-/* Icon styles within buttons */
-.play-icon, .delete-icon, .add-icon {
+/* Icon styles */
+.play-icon,
+.delete-icon,
+.add-icon {
   font-size: 16px;
   line-height: 1;
 }
 
-/* Responsive adjustments */
-@media (max-width: 768px) {
-  .step-actions {
-    margin-top: 16px;
-    width: 100%;
-    justify-content: stretch;
-  }
-  
-  .btn-play, 
-  .btn-delete,
-  .btn-add {
-    flex: 1;
-    justify-content: center;
-  }
+.add-icon {
+  margin-right: 4px;
+}
+
+.icon {
+  margin-right: 8px;
 }
 
 /* Steps */
@@ -332,10 +286,10 @@ body {
   background: white;
   border: 1px solid #e0e0e0;
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   transition: all 0.2s ease;
+  position: relative;
 }
-
 
 .step-block.executed {
   border-left: 4px solid #4CAF50;
@@ -346,7 +300,26 @@ body {
   background-color: #f8f9fa;
 }
 
-/* Step header */
+/* New step styles - Dashed border only when adding a new step */
+.new-step {
+  background: #fff;
+  /* Removed border from here */
+  box-shadow: none;
+}
+
+
+
+.new-step .step-input {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+}
+
+.new-step .instruction-label {
+  color: #2196F3;
+}
+
+
+
 .step-header {
   display: flex;
   align-items: center;
@@ -368,13 +341,12 @@ body {
   border-radius: 50%;
 }
 
-/* Step content */
 .step-content {
   padding: 20px;
   display: flex;
   gap: 20px;
-  align-items: center;
-  border-bottom: 1px solid #eee;
+  align-items: flex-end;
+    border-bottom: 1px solid #eee;
 }
 
 .step-instruction {
@@ -403,15 +375,6 @@ body {
   line-height: 1;
 }
 
-.step-actions {
-  display: flex;
-  gap: 8px;
-  min-width: 120px;
-  justify-content: flex-end;
-  margin-top: 22px;
-}
-
-/* Step details section */
 .step-details {
   padding: 20px;
   background: #f8f9fa;
@@ -420,16 +383,25 @@ body {
 }
 
 /* Code and data blocks */
-.code-block, .data-block {
+.code-block,
+.data-block {
   margin-bottom: 16px;
   border-radius: 6px;
   overflow: hidden;
-  border: 1px solid #e0e0e0;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  margin-top: 10px;
 }
 
-.code-block-header, .data-block-header {
+.code-block {
+  border: 1px solid #2d2d2d;
+  background: #2d2d2d;
+}
+
+.code-block-header,
+.data-block-header {
   padding: 12px 16px;
-  background: #f1f3f5;
+  background: #f1f3f5; /* Default background color */
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -439,11 +411,23 @@ body {
   color: #444;
 }
 
-.code-block-header:hover, .data-block-header:hover {
-  background: #e9ecef;
+.code-block-header {
+  background: #1e1e1e; /* Default background for code block */
+  color: #fff;
 }
 
-.code-content, .data-content {
+/* Hover effect for both code and data block headers */
+.code-block-header:hover,
+.data-block-header:hover {
+  background: #e9ecef; /* Hover background color */
+}
+
+.code-block-header:hover {
+  background: #252525; /* Hover background for code block */
+}
+
+.code-content,
+.data-content {
   padding: 16px;
   margin: 0;
   background: white;
@@ -452,6 +436,30 @@ body {
   line-height: 1.5;
   max-height: 300px;
   overflow-y: auto;
+}
+
+.code-content {
+  background: #2d2d2d;
+}
+
+.data-block {
+  border-color: #28a745;
+}
+
+.data-block-header {
+  background: #28a745;
+  color: white;
+}
+
+.data-block-header:hover {
+  background: #218838;
+}
+
+.data-block pre {
+  margin: 0;
+  padding: 15px;
+  white-space: pre-wrap;
+  font-family: monospace;
 }
 
 /* Screenshot block */
@@ -482,18 +490,12 @@ body {
   border-radius: 4px;
 }
 
-/* Icons */
-.icon {
-  margin-right: 8px;
-  font-size: 16px;
-}
-
-.play-icon, .delete-icon {
-  margin-right: 4px;
-}
-
 /* Status styles */
 .step-status {
+  margin-top: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.9em;
   font-size: 13px;
   padding: 6px 12px;
   border-radius: 16px;
@@ -515,44 +517,10 @@ body {
   color: #1976d2;
 }
 
-/* Buttons */
-.btn-play {
-  padding: 8px 16px;
-  background: #2196F3;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 42px;
-}
-
-.btn-play:hover {
-  background: #1976D2;
-}
-
-.btn-delete {
-  padding: 8px 12px;
-  background: transparent;
-  color: #666;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.btn-delete:hover {
-  color: #dc3545;
-  border-color: #dc3545;
-  background: #fff5f5;
-}
-
 /* Collapsed states */
 .code-block.collapsed .code-content,
-.data-block.collapsed .data-content {
+.data-block.collapsed .data-content,
+.data-block.collapsed pre {
   display: none;
 }
 
@@ -563,270 +531,50 @@ body {
   transition: transform 0.2s ease;
 }
 
-.collapsed .toggle-icon::after {
+.collapsed .toggle-icon::after,
+.data-block.collapsed .toggle-icon::after {
   content: '▶';
 }
 
-/* Responsive adjustments */
-@media (max-width: 768px) {
-  .step-content {
-    flex-direction: column;
-  }
-  
-  .step-actions {
-    margin-top: 16px;
-    width: 100%;
-    justify-content: flex-start;
-  }
-  
-  .btn-play, .btn-delete {
-    flex: 1;
-    justify-content: center;
-  }
-}
-
+/* Help text */
 .help-text {
   margin-top: 12px;
-  padding: 12px;
-  background: #f5f7fa;
-  border-radius: 4px;
+  padding: 16px;
+  background: #f3f9ff;
+  border: 1px solid #e3f2fd;
+  border-radius: 6px;
   font-size: 14px;
+  color: #1976D2;
+  order: 3;
+  font-size: 0.8em;
   color: #666;
+}
+
+.help-text p {
+  font-weight: 500;
+  margin-bottom: 8px;
 }
 
 .help-text ul {
   margin: 8px 0 0 20px;
+  color: #444;
 }
 
 .help-text li {
-  margin: 4px 0;
-} 
-
-.step-elements {
-  margin: 10px 0;
-  padding: 10px;
-  background: #f5f5f5;
-  border-radius: 4px;
+  margin: 6px 0;
+  line-height: 1.4;
 }
 
-.step-elements h4 {
-  margin: 0 0 8px 0;
-  font-size: 14px;
-  color: #666;
+.help-text a {
+  color: #007bff;
+  text-decoration: none;
 }
 
-.element-item {
-  font-family: monospace;
-  font-size: 12px;
-  padding: 4px;
-  margin: 4px 0;
-  background: #fff;
-  border: 1px solid #ddd;
-  border-radius: 3px;
-  word-break: break-all;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 15px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.element-selector {
-  color: #0066cc;
-  font-weight: bold;
-  padding: 2px 4px;
-  background: #f0f8ff;
-  border-radius: 2px;
-}
-
-.element-html {
-  color: #666;
-  font-size: 11px;
-  max-height: 600px;
-  overflow-y: auto;
-}
-
-.element-preview {
-  padding: 10px;
-  background: #f8f9fa;
-}
-
-.element-code {
-  border-top: 1px solid #ddd;
-}
-
-.code-header {
-  padding: 8px 10px;
-  background: #f1f1f1;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.code-label {
-  color: #666;
-  font-size: 0.9em;
-}
-
-.toggle-code {
-  background: none;
-  border: none;
-  color: #0366d6;
-  cursor: pointer;
-  padding: 2px 6px;
-  font-size: 0.9em;
-}
-
-.toggle-code:hover {
+.help-text a:hover {
   text-decoration: underline;
 }
 
-.code-content {
-  margin: 0;
-  padding: 10px;
-  background: #fff;
-  overflow-x: auto;
-  transition: max-height 0.3s ease-out;
-}
-
-.code-content.collapsed {
-  max-height: 0;
-  padding: 0 10px;
-  overflow: hidden;
-}
-
-.code-content code {
-  white-space: pre-wrap;
-  word-break: break-all;
-  font-family: monospace;
-}
-
-.code-block, .data-block {
-  background: #f8f9fa;
-  border: 1px solid #dee2e6;
-  border-radius: 4px;
-  margin-top: 10px;
-  overflow: hidden;
-}
-
-.code-block pre {
-  margin: 0;
-  padding: 15px;
-  white-space: pre-wrap;
-  font-family: monospace;
-}
-
-.data-block {
-  border-color: #28a745;
-}
-
-.data-block-header {
-  background: #28a745;
-  color: white;
-  padding: 8px 15px;
-  cursor: pointer;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  user-select: none;
-}
-
-.data-block-header:hover {
-  background: #218838;
-}
-
-.data-block pre {
-  margin: 0;
-  padding: 15px;
-  white-space: pre-wrap;
-  font-family: monospace;
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.data-block.collapsed pre {
-  display: none;
-}
-
-.data-block-header .toggle-icon::after {
-  content: '▼';
-  font-size: 12px;
-}
-
-.data-block.collapsed .toggle-icon::after {
-  content: '▶';
-} 
-
-/* Add these new styles */
-.step-main-content {
-  flex: 2;
-  min-width: 0;
-  display: flex;
-  gap: 16px;
-}
-
-.step-interactive {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: stretch;
-}
-
-.step-interactive .btn-primary {
-  width: 100%;
-  text-align: center;
-  margin: 0;
-}
-
-.step-thumbnail {
-  width: 100%;
-  height: 140px;
-  background: #f0f0f0;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #666;
-  font-size: 12px;
-  margin-top: auto;
-}
-
-/* Update media query for mobile responsiveness */
-@media (max-width: 768px) {
-  .step-content {
-    flex-direction: column;
-  }
-  
-  .step-interactive {
-    width: 100%;
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
-    gap: 24px;
-  }
-  
-  .step-interactive .btn-primary {
-    width: auto;
-    min-width: 120px;
-  }
-  
-  .step-thumbnail {
-    width: 140px;
-    margin-top: 0;
-  }
-} 
-
-.step-thumbnail img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  border-radius: 4px;
-} 
-
+/* Modal */
 .modal {
   display: none;
   position: fixed;
@@ -834,7 +582,7 @@ body {
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: rgba(0,0,0,0.5);
+  background-color: rgba(0, 0, 0, 0.5);
   z-index: 1000;
 }
 
@@ -867,25 +615,6 @@ body {
   border-radius: 4px;
 }
 
-.flow-selector {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  margin-top: 10px;
-}
-
-.flow-selector select {
-  padding: 8px;
-  border-radius: 4px;
-  border: 1px solid #ddd;
-  min-width: 200px;
-}
-
-.header-left {
-  display: flex;
-  flex-direction: column;
-}
-
 .no-flow-message {
   text-align: center;
   padding: 40px;
@@ -900,164 +629,13 @@ body {
   margin: 0;
 }
 
-.btn-success {
-  background-color: #28a745;
-  color: white;
-  border: 1px solid #218838;
-}
-
-.btn-success:hover {
-  background-color: #218838;
-}
-
-.btn-success:disabled {
-  background-color: #94d3a2;
-  border-color: #94d3a2;
-  cursor: not-allowed;
-}
-
-.btn-play {
-  background-color: #6f42c1;  /* Purple color */
-  color: white;
-  border: 1px solid #553098;
-}
-
-.btn-play:hover {
-  background-color: #553098;
-}
-
-.btn-play:disabled {
-  background-color: #a98eda;
-  border-color: #a98eda;
-  cursor: not-allowed;
-}
-
-.step-status {
-  margin-top: 8px;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 0.9em;
-}
-
-.step-status.info {
-  background-color: #e3f2fd;
-  color: #1976d2;
-}
-
-.step-status.success {
-  background-color: #e8f5e9;
-  color: #2e7d32;
-}
-
-.step-status.error {
-  background-color: #ffebee;
-  color: #c62828;
-}
-
-/* Add these new styles */
-.header-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 15px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid #eee;
-}
-
-.profile-section {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 14px;
-  color: #666;
-}
-
-#currentProfile {
-  font-weight: 500;
-}
-
-/* Update existing header styles */
-.header {
-  padding: 20px 30px;
-}
-
-.header-left {
-  flex: 1;
-}
-
-.header-right {
-  padding-left: 30px;
-  border-left: 1px solid #eee;
-}
-
-/* Update responsive styles */
-@media (max-width: 768px) {
-  .header-top {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 15px;
-  }
-  
-  .header {
-    flex-direction: column;
-    gap: 20px;
-  }
-  
-  .header-right {
-    padding-left: 0;
-    border-left: none;
-    padding-top: 15px;
-    border-top: 1px solid #eee;
-    width: 100%;
-  }
-}
-
-.btn-logout {
-  color: #666;
-  border-color: #ddd;
-  background: transparent;
-  font-size: 13px;
-  padding: 6px 12px;
-}
-
-.btn-logout:hover {
-  background-color: #f8f9fa;
-  color: #dc3545;
-  border-color: #dc3545;
-}
-
-.btn-settings {
-  position: relative;
-  margin-right: 10px;
-  padding: 8px 16px;
-  background: #f8f9fa;
-  border: 1px solid #ddd;
-  font-weight: 500;
-}
-
 .api-key-info {
   margin-bottom: 15px;
   color: #dc3545;
   font-weight: 500;
 }
 
-.help-text {
-  font-size: 0.8em;
-  color: #666;
-  margin-top: 5px;
-  order: 3;
-}
-
-.help-text a {
-  color: #007bff;
-  text-decoration: none;
-}
-
-.help-text a:hover {
-  text-decoration: underline;
-}
-
-/* Add styles for the notification dot */
+/* Notification dot */
 .notification-dot {
   position: absolute;
   top: -5px;
@@ -1068,7 +646,7 @@ body {
   border-radius: 50%;
 }
 
-/* Add styles for the tooltip bubble */
+/* Tooltip bubble */
 .tooltip-bubble {
   position: absolute;
   bottom: -45px;
@@ -1102,42 +680,10 @@ body {
   visibility: visible;
 }
 
-/* Update btn-settings to accommodate tooltip */
-.btn-settings {
-  position: relative;
-  margin-right: 10px;
-  margin-bottom: 10px;
-}
-
-/* Add these styles */
-.btn-delete {
-  padding: 4px 8px;
-  font-size: 16px;
-  color: #666;
-  background: transparent;
-  border: none;
-  transition: all 0.2s ease;
-  margin-top: 4px;
-}
-
-.btn-delete:hover {
-  color: #dc3545;
-  background: transparent;
-}
-
-.btn-delete:disabled {
-  color: #ccc;
-  cursor: not-allowed;
-}
-
-.btn-delete:disabled:hover {
-  color: #ccc;
-}
-
-/* Add these new styles for the new step */
+/* New step styles */
 .new-step {
   background: #fff;
-  border: 1px dashed #2196F3;  /* Dashed border to indicate it's a new step */
+  border: 1px solid #d0d0d0;
   box-shadow: none;
 }
 
@@ -1154,166 +700,7 @@ body {
   color: #2196F3;
 }
 
-/* Add step button styling to match other buttons */
-.btn-add {
-  padding: 8px 16px;
-  background: #2196F3;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.btn-add:hover {
-  background: #1976D2;
-}
-
-.add-icon {
-  font-size: 18px;
-  margin-right: 4px;
-}
-
-/* Update existing styles to ensure consistency */
-.step-block {
-  margin: 20px 0;
-  background: white;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-  transition: all 0.2s ease;
-}
-
-.step-header {
-  display: flex;
-  align-items: center;
-  padding: 12px 20px;
-  border-bottom: 1px solid #eee;
-  gap: 16px;
-}
-
-.step-content {
-  padding: 20px;
-  display: flex;
-  gap: 20px;
-  align-items: center;
-}
-
-.step-instruction {
-  flex: 1;
-}
-
-.step-actions {
-  display: flex;
-  gap: 8px;
-  min-width: 120px;
-  justify-content: flex-end;
-}
-
-/* Update responsive styles */
-@media (max-width: 768px) {
-  .step-content {
-    flex-direction: column;
-  }
-  
-  .step-actions {
-    margin-top: 16px;
-    width: 100%;
-    justify-content: stretch;
-  }
-  
-  .btn-play, 
-  .btn-delete,
-  .btn-add {
-    flex: 1;
-    justify-content: center;
-  }
-}
-
-/* Help text styling */
-.help-text {
-  margin-top: 12px;
-  padding: 16px;
-  background: #f3f9ff;
-  border: 1px solid #e3f2fd;
-  border-radius: 6px;
-  font-size: 14px;
-  color: #1976D2;
-}
-
-.help-text p {
-  font-weight: 500;
-  margin-bottom: 8px;
-}
-
-.help-text ul {
-  margin: 8px 0 0 20px;
-  color: #444;
-}
-
-.help-text li {
-  margin: 6px 0;
-  line-height: 1.4;
-}
-
-/* Update the code block styles */
-.code-block {
-  margin-bottom: 16px;
-  border-radius: 6px;
-  overflow: hidden;
-  border: 1px solid #2d2d2d;
-  background: #2d2d2d;
-}
-
-.code-block-header {
-  padding: 12px 16px;
-  background: #1e1e1e;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  cursor: pointer;
-  user-select: none;
-  font-weight: 500;
-  color: #fff;
-}
-
-.code-block-header:hover {
-  background: #252525;
-}
-
-.code-content {
-  margin: 0;
-  background: #2d2d2d;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-  font-size: 13px;
-  line-height: 1.5;
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-/* Override some Prism.js styles */
-pre[class*="language-"] {
-  margin: 0;
-  border-radius: 0;
-  padding: 1em;
-}
-
-code[class*="language-"] {
-  padding: 0;
-  tab-size: 2;
-}
-
-.step-header {
-  display: flex;
-  align-items: center;
-}
-
-.step-block {
-  position: relative;  /* For positioning the timer */
-}
-
+/* Live timer */
 .live-timer {
   position: absolute;
   top: 8px;
@@ -1334,4 +721,70 @@ code[class*="language-"] {
   padding: 2px 6px;
   border-radius: 3px;
   font-family: monospace;
+}
+
+/* Prism.js overrides */
+pre[class*="language-"] {
+  margin: 0;
+  border-radius: 0;
+  padding: 1em;
+}
+
+code[class*="language-"] {
+  padding: 0;
+  tab-size: 2;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .header-main {
+    flex-direction: column;
+    gap: 15px;
+    align-items: stretch;
+  }
+
+  .header {
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .header-right {
+    padding-left: 0;
+    border-left: none;
+    padding-top: 15px;
+    border-top: 1px solid #eee;
+    width: 100%;
+  }
+
+  .flow-controls {
+    flex-direction: column;
+    gap: 15px;
+  }
+
+  .flow-selector {
+    width: 100%;
+  }
+
+  .automation-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+ 
+  .step-actions {
+    margin-top: 16px;
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .btn-primary {
+    width: auto;
+    min-width: 120px;
+  }
+
+  .btn-play,
+  .btn-delete {
+    flex: 1;
+    justify-content: center;
+  }
 }
