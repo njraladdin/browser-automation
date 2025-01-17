@@ -445,6 +445,49 @@ WHEN NOT TO USE:
 • For data extraction (use extractStructuredContentUsingAI instead)
 • For finding dynamic elements (use findSelectorForDynamicElementUsingAI instead)
 
+=== REPORTING PROGRESS ===
+Use statusEmitter to report progress back to the user interface. The function accepts an object with:
+• message: String describing the current action/status
+• type: 'executing' | 'success' | 'error' | 'info'
+• stepIndex: Current step number
+• data: Optional additional data about progress
+
+Example implementations:
+// Starting operations
+statusEmitter({ message: 'Starting page navigation...', type: 'executing', stepIndex: 0 });
+statusEmitter({ message: 'Beginning search for products...', type: 'executing', stepIndex: 0 });
+statusEmitter({ message: 'Initiating login process...', type: 'executing', stepIndex: 0 });
+
+// Progress updates
+statusEmitter({ message: 'Found 25 products on current page', type: 'info', stepIndex: 0 });
+statusEmitter({ message: 'Successfully logged in', type: 'info', stepIndex: 0 });
+statusEmitter({ message: 'Loaded page 2 of 5', type: 'info', stepIndex: 0 });
+statusEmitter({ message: 'Processing item 15 of 50', type: 'info', stepIndex: 0 });
+
+// Progress with data
+statusEmitter({ message: 'Extracted 30 items so far', type: 'info', stepIndex: 0, data: { itemCount: 30, totalExpected: 100 } });
+statusEmitter({ message: 'Found matching product', type: 'info', stepIndex: 0, data: { productName: 'iPhone', price: '$999' } });
+
+// Success messages
+statusEmitter({ message: 'Successfully extracted all products', type: 'success', stepIndex: 0 });
+statusEmitter({ message: 'Login completed successfully', type: 'success', stepIndex: 0 });
+statusEmitter({ message: 'Data extraction finished', type: 'success', stepIndex: 0 });
+
+// Error messages
+statusEmitter({ message: 'Failed to find product: Element not found', type: 'error', stepIndex: 0 });
+statusEmitter({ message: 'Network error while loading page', type: 'error', stepIndex: 0 });
+statusEmitter({ message: 'Invalid login credentials', type: 'error', stepIndex: 0 });
+
+IMPORTANT NOTES FOR PROGRESS REPORTING:
+• Use 'executing' type when starting operations
+• Use 'info' type for progress updates
+• Use 'success' type for completion
+• Use 'error' type for failures
+• Include meaningful progress data when possible
+• Report progress at regular intervals during long operations
+• Always include clear error messages
+• Keep messages concise but informative
+
 === CURRENT PAGE INFO ===
 URL: ${snapshot.url}
 
@@ -858,21 +901,23 @@ ${snapshot.html} */
         stepIndex 
       });
 
-      // Execute the step
+      // Execute the step - now including statusEmitter in the context
       const stepFunction = new Function(
         'page', 
         'extractStructuredContentUsingAI',
         'findSelectorForDynamicElementUsingAI',
-        `return (async (page, extractStructuredContentUsingAI, findSelectorForDynamicElementUsingAI) => {
+        'statusEmitter',
+        `return (async (page, extractStructuredContentUsingAI, findSelectorForDynamicElementUsingAI, statusEmitter) => {
           ${step.code}
-        })(page, extractStructuredContentUsingAI, findSelectorForDynamicElementUsingAI)`
+        })(page, extractStructuredContentUsingAI, findSelectorForDynamicElementUsingAI, statusEmitter)`
       );
 
       try {
         const result = await stepFunction(
           this.page, 
           this.extractStructuredContentUsingAI.bind(this),
-          this.findSelectorForDynamicElementUsingAI.bind(this)
+          this.findSelectorForDynamicElementUsingAI.bind(this),
+          statusEmitter
         );
 
         // Store extracted data if present
