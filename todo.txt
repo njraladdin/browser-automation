@@ -57,6 +57,8 @@ fix shadow dom selectors, done
 reset when browser is closed, done 
 simplfy step state and emitting status (after start : running, after : succes or error). socket messgae only emit message, don't affect colors or state, done 
 
+close browser when websocket connection for that flow is closed
+
 
 run each benchmark, troubleshoot and improve :
 - go to anonymiosu instagram stories, open each story modal and get all stories posts :

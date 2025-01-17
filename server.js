@@ -10,6 +10,9 @@ const server = http.createServer(app);
 const io = socketIO(server);
 const flowManager = new FlowManager();
 
+// Add a Map to track flow connections
+const flowConnections = new Map(); // flowId -> Set of socket IDs
+
 app.use(express.json());
 app.use(express.static('public'));
 app.use('/css', express.static('public/css', {
@@ -146,18 +149,65 @@ io.on('connection', (socket) => {
   socket.on('join-flow', (flowId) => {
     // Leave previous flow room if any
     Object.keys(socket.rooms).forEach(room => {
-      if (room !== socket.id) socket.leave(room);
+      if (room !== socket.id) {
+        socket.leave(room);
+        // Remove socket from previous flow's connections
+        const flowIdMatch = room.match(/^flow-(.+)$/);
+        if (flowIdMatch) {
+          const previousFlowId = flowIdMatch[1];
+          const connections = flowConnections.get(previousFlowId);
+          if (connections) {
+            connections.delete(socket.id);
+            if (connections.size === 0) {
+              handleFlowDisconnection(previousFlowId);
+            }
+          }
+        }
+      }
     });
     
     // Join new flow room
     socket.join(`flow-${flowId}`);
     console.log(`Client joined flow-${flowId}`);
+
+    // Track this connection
+    if (!flowConnections.has(flowId)) {
+      flowConnections.set(flowId, new Set());
+    }
+    flowConnections.get(flowId).add(socket.id);
   });
   
   socket.on('disconnect', () => {
     console.log('Client disconnected');
+    // Check all flows this socket was connected to
+    flowConnections.forEach((connections, flowId) => {
+      if (connections.has(socket.id)) {
+        connections.delete(socket.id);
+        if (connections.size === 0) {
+          handleFlowDisconnection(flowId);
+        }
+      }
+    });
   });
 });
+
+// Add helper function to handle flow disconnection
+async function handleFlowDisconnection(flowId) {
+  console.log(`All clients disconnected from flow ${flowId}, deactivating...`);
+  try {
+    const flow = await flowManager.getFlow(flowId);
+    if (flow) {
+      // Close browser and deactivate flow
+      if (flow.automationFlowInstance) {
+        await flow.automationFlowInstance.closeBrowser();
+      }
+      flowManager.activeFlows.delete(flowId);
+      console.log(`Successfully deactivated flow ${flowId}`);
+    }
+  } catch (error) {
+    console.error(`Error deactivating flow ${flowId}:`, error);
+  }
+}
 
 // Add this helper function to emit status updates
 function emitFlowStatus(flowId, status) {
