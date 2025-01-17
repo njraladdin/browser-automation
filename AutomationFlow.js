@@ -81,10 +81,40 @@ class AutomationFlow {
     );
   }
 
+  async setupStepEnvironment(stepIndex) {
+    try {
+      // If we're already set up for this step, skip
+      if (this.lastExecutedStep === stepIndex) {
+        console.log(clc.cyan('▶ Environment already set up for step:', stepIndex));
+        return { success: true };
+      }
+
+      // Ensure browser is initialized
+      if (!this.browser || !this.page) {
+        console.log(clc.cyan('▶ Browser not initialized, initializing...'));
+        await this.initBrowser();
+      }
+
+      // Create fresh snapshot
+      console.log(clc.cyan('▶ Creating page snapshot...'));
+      await this.pageSnapshot.captureSnapshot(this.page);
+
+      return { success: true };
+    } catch (error) {
+      console.log(clc.red('✗ Step environment setup failed:'), error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
   async addAutomationStep(instructions, statusEmitter = () => {}) {
     try {
       console.log(clc.cyan('\n▶ Adding new automation step:'), instructions);
       
+      const setup = await this.setupStepEnvironment(this.automationSteps.length);
+      if (!setup.success) {
+        throw new Error(setup.error);
+      }
+
       statusEmitter({ 
         message: 'Generating code for new step...', 
         type: 'executing', 
@@ -203,21 +233,54 @@ try {
 }
 
 === DATA EXTRACTION ===
-Use extractStructuredContentUsingAI for all data extraction tasks.
+Use extractStructuredContentUsingAI for all data extraction tasks by providing a description of what data to extract and its expected structure.
 
-Example implementation:
+Example usage:
 try {
   console.log('Extracting data...');
-  const extractedData = await extractStructuredContentUsingAI('Extract all product listings with their prices, names, and descriptions');
+  const extractedData = await extractStructuredContentUsingAI(
+    '{Detailed description of what to extract and how to structure it, including exact key names for the JSON output. See examples below.}'
+  );
   console.log('Extracted data:', extractedData);
-  return { 
-    success: true, 
-    extractedData 
-  };
+  return { success: true, extractedData };
 } catch (error) {
   console.error('Failed to extract data:', error);
   throw error;
 }
+
+Description Examples:
+
+// Products
+'Extract all product listings. Structure each product with these exact keys:
+ name: Product name and brand
+ current_price: Current selling price
+ original_price: Original price if on sale
+ description: Full product description
+ rating: Numeric rating value
+ review_count: Number of reviews
+ in_stock: Whether item is available
+ badges: Array of promotional badges/labels'
+
+// News Articles
+'Extract all news articles. Structure each article with these exact keys:
+ headline: Full article title
+ author: Writer's name
+ publish_date: Article publication date
+ category: Article section/category
+ summary: Preview text or summary
+ read_time: Estimated reading time
+ comment_count: Number of comments'
+
+// Jobs
+'Extract all job postings. Structure each job with these exact keys:
+ title: Job position title
+ company: Company name
+ location: Full location details
+ salary: Salary range if shown
+ experience: Required experience level
+ employment_type: Full-time/part-time/contract
+ post_date: When job was posted
+ requirements: Array of key qualifications'
 
 === INFINITE SCROLL HANDLING ===
 OVERVIEW:
@@ -601,12 +664,15 @@ ${snapshot.html} */
       - We need to extract as much relevant data as possible
       - Use the structured content map to accurately identify and extract information`;
 
+      const startTime = Date.now();
       const result = await model.generateContent({
         contents: [{ role: "user", parts: [{ text: systemPrompt }]}]
       });
 
       const response = await result.response;
       const parsedText = response.text();
+      const processingTime = ((Date.now() - startTime) / 1000).toFixed(2);
+      console.log(clc.green(`✓ AI response received in ${processingTime}s`));
 
       // Save debug file
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -750,6 +816,11 @@ ${snapshot.html} */
     try {
       console.log(clc.cyan(`\n▶ Executing step ${stepIndex + 1}`));
       
+      const setup = await this.setupStepEnvironment(stepIndex);
+      if (!setup.success) {
+        throw new Error(setup.error);
+      }
+
       // Reset AI selector results at the start
       this.aiSelectorResults = [];
       

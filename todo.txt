@@ -95,6 +95,7 @@ run each benchmark, troubleshoot and improve :
     Problem: extracting content using AI takes too long when infinite scrolling 
        Solutions: 
           optimize content map size in prompt 
+          optimize content extraction, maybe multiple concurrent requests on split content map
 
 benchmarks: 
 - go to anonymiosu instagram stories, and scrape latest stories media, DONE 
