@@ -418,6 +418,11 @@ class PageSnapshot {
 
   async startDOMObserver(page) {
     try {
+      // Clear any existing interval first
+      if (this.changeCollectionInterval) {
+        clearInterval(this.changeCollectionInterval);
+      }
+
       await page.evaluate(() => {
         window.__domChanges = [];
         
@@ -539,67 +544,80 @@ class PageSnapshot {
 
       // Set up periodic collection of changes
       this.changeCollectionInterval = setInterval(async () => {
-        const changes = await page.evaluate(() => {
-          const currentChanges = window.__domChanges;
-          window.__domChanges = []; 
-          return currentChanges;
-        });
-
-        if (changes && changes.length > 0) {
-          try {
-            console.log('Processing changes...');
-            const processedChanges = changes.map(change => {
-              let html = '';
-              let baseSelector = '';
-              if (change.type === 'childList') {
-                const addedNode = change.changes.added;
-                if (addedNode && addedNode.type === 'element') {
-                  html = addedNode.content;
-                  baseSelector = change.selectorPath;
-                }
-              }
-
-              if (!html) {
-                return null;  // Return null for changes without HTML content
-              }
-
-              const $ = cheerio.load(html, {
-                xml: {
-                  withDomLvl1: true,
-                  xmlMode: false,
-                },
-                isDocument: false
-              });
-              
-              const { interactive, content } = this._generateMapsFromCheerio($, null, null, baseSelector);
-              
-              // Only return changes that actually have content or interactive elements
-              if (content.length === 0 && 
-                  interactive.inputs.length === 0 && 
-                  interactive.buttons.length === 0 && 
-                  interactive.links.length === 0) {
-                return null;
-              }
-
-              return {
-                type: change.type,
-                timestamp: change.timestamp,
-                contentMap: content,
-                interactiveMap: interactive
-              };
-            }).filter(change => change !== null);  // Filter out null changes
-
-            // Only save if we have non-empty changes
-            if (processedChanges.length > 0) {
-              this.latestDOMChanges.push(...processedChanges);
-              await this.logChangesToFile(processedChanges);
+        try {
+          const changes = await page.evaluate(() => {
+            const currentChanges = window.__domChanges;
+            window.__domChanges = []; 
+            return currentChanges;
+          }).catch(error => {
+            // If browser is disconnected, clear the interval
+            if (error.message.includes('detached') || error.message.includes('disconnected')) {
+              console.log('Browser disconnected, clearing DOM observer interval');
+              clearInterval(this.changeCollectionInterval);
             }
-          } catch (error) {
-            console.error('Error processing changes:', error);
-            await this.logChangesToFile(changes);
+            return null;
+          });
+
+          if (changes && changes.length > 0) {
+            try {
+              console.log('Processing changes...');
+              const processedChanges = changes.map(change => {
+                let html = '';
+                let baseSelector = '';
+                if (change.type === 'childList') {
+                  const addedNode = change.changes.added;
+                  if (addedNode && addedNode.type === 'element') {
+                    html = addedNode.content;
+                    baseSelector = change.selectorPath;
+                  }
+                }
+
+                if (!html) {
+                  return null;  // Return null for changes without HTML content
+                }
+
+                const $ = cheerio.load(html, {
+                  xml: {
+                    withDomLvl1: true,
+                    xmlMode: false,
+                  },
+                  isDocument: false
+                });
+                
+                const { interactive, content } = this._generateMapsFromCheerio($, null, null, baseSelector);
+                
+                // Only return changes that actually have content or interactive elements
+                if (content.length === 0 && 
+                    interactive.inputs.length === 0 && 
+                    interactive.buttons.length === 0 && 
+                    interactive.links.length === 0) {
+                  return null;
+                }
+
+                return {
+                  type: change.type,
+                  timestamp: change.timestamp,
+                  contentMap: content,
+                  interactiveMap: interactive
+                };
+              }).filter(change => change !== null);  // Filter out null changes
+
+              // Only save if we have non-empty changes
+              if (processedChanges.length > 0) {
+                this.latestDOMChanges.push(...processedChanges);
+                await this.logChangesToFile(processedChanges);
+              }
+            } catch (error) {
+              console.error('Error processing changes:', error);
+              await this.logChangesToFile(changes);
+            }
           }
+        } catch (error) {
+          console.log('Error in DOM observer interval:', error);
+          clearInterval(this.changeCollectionInterval);
         }
       }, 1000);
+
     } catch (error) {
       console.error('Failed to start DOM observer:', error);
     }

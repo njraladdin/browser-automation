@@ -43,6 +43,16 @@ class AutomationFlow {
             height: 800
           }
         });
+
+        // Add handler for browser disconnection
+        this.browser.on('disconnected', async () => {
+          console.log(clc.yellow('⚠ Browser was disconnected or closed'));
+          this.browser = null;
+          this.page = null;
+          // Use existing resetExecution method
+          await this.resetExecution();
+        });
+
         this.page = await this.browser.newPage();
         
         console.log(clc.cyan('▶ Navigating to initial URL...'));
@@ -50,6 +60,13 @@ class AutomationFlow {
           await this.page.goto(this.INITIAL_URL, { waitUntil: 'networkidle0' });
           console.log(clc.green('✓ Page loaded successfully'));
         } catch (navigationError) {
+          if (navigationError.message.includes('detached') || navigationError.message.includes('disconnected')) {
+            console.log(clc.yellow('⚠ Browser was closed during navigation'));
+            this.browser = null;
+            this.page = null;
+            await this.resetExecution();
+            throw navigationError;
+          }
           throw new Error(`Failed to load initial page: ${navigationError.message}`);
         }
         
@@ -58,6 +75,7 @@ class AutomationFlow {
         console.log(clc.red('✗ Browser initialization failed:'), error.message);
         this.browser = null;
         this.page = null;
+        await this.resetExecution();
         throw error;
       } finally {
         this.browserInitializing = null;
@@ -87,6 +105,15 @@ class AutomationFlow {
       if (this.lastExecutedStep === stepIndex) {
         console.log(clc.cyan('▶ Environment already set up for step:', stepIndex));
         return { success: true };
+      }
+
+      // Check step order - only allow executing next step or re-running previous steps
+      if (stepIndex > this.lastExecutedStep + 1) {
+        console.log(clc.red('✗ Cannot skip steps. Requested step:', stepIndex, 'Last executed step:', this.lastExecutedStep));
+        return { 
+          success: false, 
+          error: `Cannot execute step ${stepIndex + 1} before completing previous steps. Last completed step: ${this.lastExecutedStep + 1}` 
+        };
       }
 
       // Ensure browser is initialized
