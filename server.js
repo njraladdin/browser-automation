@@ -105,31 +105,6 @@ app.post('/flows/:flowId/step', async (req, res) => {
   }
 });
 
-app.post('/flows/:flowId/execute', async (req, res) => {
-  try {
-    const { flowId } = req.params;
-    const flow = await flowManager.getFlow(flowId);
-    
-    if (!flow) {
-      return res.status(404).json({ success: false, error: 'Flow not found' });
-    }
-
-    // Set up status emitter
-    flow.automationFlowInstance.statusCallback = (status) => {
-      emitFlowStatus(flowId, status);
-    };
-
-    const result = await flow.automationFlowInstance.executeCurrentSteps();
-    
-    // Clear the callback
-    flow.automationFlowInstance.statusCallback = null;
-    
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
 // Clear all steps
 app.post('/clear', async (req, res) => {
   const result = await automationFlow.clearSteps();
@@ -207,6 +182,8 @@ app.post('/flows/:flowId/execute-step/:stepIndex', async (req, res) => {
 
     const statusEmitter = (status) => emitFlowStatus(flowId, status);
     const result = await flow.automationFlowInstance.executeSingleStep(parseInt(stepIndex), statusEmitter);
+    
+    // Just return the result directly - it already contains the steps with screenshots!
     res.json(result);
   } catch (error) {
     emitFlowStatus(req.params.flowId, { 

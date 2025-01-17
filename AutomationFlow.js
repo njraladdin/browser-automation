@@ -16,7 +16,6 @@ class AutomationFlow {
     this.lastExecutedStep = -1;
     this.INITIAL_URL = 'https://www.google.com';
     this.browserInitializing = null;
-    this.statusCallback = null;
     this.aiSelectorResults = [];
   }
 
@@ -24,7 +23,7 @@ class AutomationFlow {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  async initBrowser() {
+  async initBrowser(statusEmitter = () => {}) {
     if (this.browser && this.page) {
       return { browser: this.browser, page: this.page };
     }
@@ -35,6 +34,7 @@ class AutomationFlow {
 
     this.browserInitializing = (async () => {
       try {
+        statusEmitter({ message: 'Launching browser...' });
         console.log(clc.cyan('▶ Launching browser...'));
         this.browser = await puppeteer.launch({ 
           headless: false,
@@ -44,24 +44,29 @@ class AutomationFlow {
           }
         });
 
+        statusEmitter({ message: 'Browser launched successfully' });
+
         // Add handler for browser disconnection
         this.browser.on('disconnected', async () => {
           console.log(clc.yellow('⚠ Browser was disconnected or closed'));
+          statusEmitter({ message: 'Browser was disconnected or closed' });
           this.browser = null;
           this.page = null;
-          // Use existing resetExecution method
           await this.resetExecution();
         });
 
         this.page = await this.browser.newPage();
         
+        statusEmitter({ message: `Navigating to ${this.INITIAL_URL}...` });
         console.log(clc.cyan('▶ Navigating to initial URL...'));
         try {
           await this.page.goto(this.INITIAL_URL, { waitUntil: 'networkidle0' });
           console.log(clc.green('✓ Page loaded successfully'));
+          statusEmitter({ message: 'Page loaded successfully' });
         } catch (navigationError) {
           if (navigationError.message.includes('detached') || navigationError.message.includes('disconnected')) {
             console.log(clc.yellow('⚠ Browser was closed during navigation'));
+            statusEmitter({ message: 'Browser was closed during navigation' });
             this.browser = null;
             this.page = null;
             await this.resetExecution();
@@ -73,6 +78,7 @@ class AutomationFlow {
         return { browser: this.browser, page: this.page };
       } catch (error) {
         console.log(clc.red('✗ Browser initialization failed:'), error.message);
+        statusEmitter({ message: `Browser initialization failed: ${error.message}` });
         this.browser = null;
         this.page = null;
         await this.resetExecution();
@@ -99,12 +105,12 @@ class AutomationFlow {
     );
   }
 
-  async setupStepEnvironment(stepIndex) {
+  async setupStepEnvironment(stepIndex, statusEmitter = () => {}) {
     try {
       // If we're already set up for this step, skip
       if (this.lastExecutedStep === stepIndex) {
         console.log(clc.cyan('▶ Environment already set up for step:', stepIndex));
-        return { success: true };
+        return { success: true, browser: this.browser, page: this.page };
       }
 
       // Check step order - only allow executing next step or re-running previous steps
@@ -119,14 +125,16 @@ class AutomationFlow {
       // Ensure browser is initialized
       if (!this.browser || !this.page) {
         console.log(clc.cyan('▶ Browser not initialized, initializing...'));
-        await this.initBrowser();
+        const { browser, page } = await this.initBrowser(statusEmitter);
+        this.browser = browser;
+        this.page = page;
       }
 
       // Create fresh snapshot
       console.log(clc.cyan('▶ Creating page snapshot...'));
       await this.pageSnapshot.captureSnapshot(this.page);
 
-      return { success: true };
+      return { success: true, browser: this.browser, page: this.page };
     } catch (error) {
       console.log(clc.red('✗ Step environment setup failed:'), error.message);
       return { success: false, error: error.message };
@@ -137,49 +145,20 @@ class AutomationFlow {
     try {
       console.log(clc.cyan('\n▶ Adding new automation step:'), instructions);
       
-      const setup = await this.setupStepEnvironment(this.automationSteps.length);
+      const setup = await this.setupStepEnvironment(this.automationSteps.length, statusEmitter);
       if (!setup.success) {
         throw new Error(setup.error);
       }
-
-      statusEmitter({ 
-        message: 'Generating code for new step...', 
-        type: 'executing', 
-        stepIndex: this.automationSteps.length 
-      });
       
-      if (!this.browser || !this.page) {
-        statusEmitter({ 
-          message: 'Initializing browser...', 
-          type: 'executing', 
-          stepIndex: this.automationSteps.length 
-        });
-        
-        try {
-          const { browser, page } = await this.initBrowser();
-          this.browser = browser;
-          this.page = page;
-          
-          statusEmitter({ 
-            message: 'Browser initialized successfully', 
-            type: 'info', 
-            stepIndex: this.automationSteps.length 
-          });
-        } catch (browserError) {
-          statusEmitter({ 
-            message: `Browser initialization failed: ${browserError.message}`, 
-            type: 'error', 
-            stepIndex: this.automationSteps.length 
-          });
-          throw browserError;
-        }
-      }
+      // Use the browser and page from setup
+      this.browser = setup.browser;
+      this.page = setup.page;
 
-      statusEmitter({ 
-        message: 'Analyzing page and generating automation code...', 
-        type: 'info', 
-        stepIndex: this.automationSteps.length 
-      });
+      statusEmitter({ message: 'Generating code for new step...', stepIndex: this.automationSteps.length });
+      
+      // Remove redundant browser initialization since setupStepEnvironment handles it
+      
+      statusEmitter({ message: 'Analyzing page and generating automation code...', stepIndex: this.automationSteps.length });
 
       const snapshot = await this.pageSnapshot.captureSnapshot(this.page);
 
@@ -208,7 +187,8 @@ ${step.code}${extractedDataSummary}`;
         interactive: JSON.stringify(snapshot.interactive, null, 2),
         content: PageSnapshot.condenseContentMap(snapshot.content),
         previous_steps: previousSteps || 'No previous steps',
-        instructions: instructions
+        instructions: instructions,
+        step_index: this.automationSteps.length
       });
 
       await this.savePromptForDebug(systemPrompt, instructions);
@@ -219,11 +199,11 @@ ${step.code}${extractedDataSummary}`;
       }
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({
-        model: "gemini-exp-1206",
+        model: "gemini-2.0-flash-exp",
         generationConfig: {
-          temperature: 0.6,
+          temperature: 0.7,
           topP: 0.95,
-          topK: 64,
+          topK: 40,
           maxOutputTokens: 8192,
         }
       });
@@ -262,11 +242,7 @@ ${step.code}${extractedDataSummary}`;
 
       // After successful execution, if we have AI selectors, replace them with concrete ones
       if (this.aiSelectorResults.length > 0) {
-        statusEmitter({ 
-          message: 'Replacing AI selectors with concrete values...', 
-          type: 'info', 
-          stepIndex 
-        });
+        statusEmitter({ message: 'Replacing AI selectors with concrete values...', stepIndex });
         
         const updatedCode = await this.replaceAISelectorsWithConcreteSelectors(
           code, 
@@ -277,11 +253,7 @@ ${step.code}${extractedDataSummary}`;
         this.automationSteps[stepIndex].code = updatedCode;
         code = updatedCode; // Update the code that will be returned
         
-        statusEmitter({ 
-          message: 'Successfully replaced AI selectors with concrete values', 
-          type: 'success', 
-          stepIndex 
-        });
+        statusEmitter({ message: 'Successfully replaced AI selectors with concrete values', stepIndex });
       }
 
       console.log(clc.green('✓ Step added and executed successfully'));
@@ -294,11 +266,7 @@ ${step.code}${extractedDataSummary}`;
       };
     } catch (error) {
       console.log(clc.red('✗ Failed to add automation step:'), error.message);
-      statusEmitter({ 
-        message: `Failed: ${error.message}`, 
-        type: 'error', 
-        stepIndex: this.automationSteps.length 
-      });
+      statusEmitter({ message: `Failed: ${error.message}`, stepIndex: this.automationSteps.length });
       return { success: false, error: error.message };
     }
   }
@@ -401,69 +369,6 @@ ${step.code}${extractedDataSummary}`;
     }
   }
 
-  async executeCurrentSteps() {
-    try {
-      console.log(clc.cyan('\n▶ Starting execution of all steps'));
-      console.log(clc.cyan(`▶ Total steps: ${this.automationSteps.length}, Starting from: ${this.lastExecutedStep + 1}`));
-      
-      const startIndex = (typeof this.lastExecutedStep === 'number' ? this.lastExecutedStep : -1) + 1;
-      console.log('[AutomationFlow] Starting from index:', startIndex);
-      
-      for (let i = startIndex; i < this.automationSteps.length; i++) {
-        console.log(clc.cyan(`\n▶ Executing step ${i + 1}/${this.automationSteps.length}:`), this.automationSteps[i].instructions);
-        
-        const statusEmitter = (status) => {
-          if (this.statusCallback) {
-            this.statusCallback(status);
-          }
-        };
-
-        // Emit executing status
-        statusEmitter({
-          message: 'Executing step...',
-          type: 'executing',
-          stepIndex: i
-        });
-
-        const result = await this.executeSingleStep(i, statusEmitter);
-        if (!result.success) {
-          console.log(clc.red('✗ Step execution failed:'), result.error);
-          statusEmitter({
-            message: result.error,
-            type: 'error',
-            stepIndex: i
-          });
-          throw new Error(result.error);
-        }
-
-        // Update lastExecutedStep after successful execution
-        this.lastExecutedStep = i;
-
-        // Emit success status
-        statusEmitter({
-          message: 'Step completed successfully',
-          type: 'success',
-          stepIndex: i
-        });
-
-        // Small delay between steps
-        await this.delay(500);
-      }
-
-      console.log(clc.green('\n✓ All steps executed successfully'));
-      console.log('[AutomationFlow] Execution completed. Last executed step:', this.lastExecutedStep);
-
-      return { 
-        success: true, 
-        lastExecutedStep: this.lastExecutedStep,
-        steps: this.automationSteps
-      };
-    } catch (error) {
-      console.log(clc.red('✗ Steps execution failed:'), error.message);
-      return { success: false, error: error.message };
-    }
-  }
-
   async resetExecution() {
     try {
       this.lastExecutedStep = -1;
@@ -507,7 +412,7 @@ ${step.code}${extractedDataSummary}`;
     try {
       console.log(clc.cyan(`\n▶ Executing step ${stepIndex + 1}`));
       
-      const setup = await this.setupStepEnvironment(stepIndex);
+      const setup = await this.setupStepEnvironment(stepIndex, statusEmitter);
       if (!setup.success) {
         throw new Error(setup.error);
       }
@@ -516,21 +421,13 @@ ${step.code}${extractedDataSummary}`;
       this.aiSelectorResults = [];
       
       // Emit starting status
-      statusEmitter({ 
-        message: 'Starting step execution...', 
-        type: 'executing', 
-        stepIndex 
-      });
+      statusEmitter({ message: 'Starting step execution...', stepIndex });
       if (!this.browser || !this.page) {
         console.log(clc.cyan('▶ Browser not initialized, initializing...'));
         try {
-          await this.initBrowser();
+          await this.initBrowser(statusEmitter);
         } catch (browserError) {
-          statusEmitter({ 
-            message: `Browser initialization failed: ${browserError.message}`, 
-            type: 'error', 
-            stepIndex 
-          });
+          statusEmitter({ message: `Browser initialization failed: ${browserError.message}`, stepIndex });
           console.log(clc.red('✗ Browser initialization failed:'), browserError.message);
           throw browserError;
         }
@@ -543,11 +440,7 @@ ${step.code}${extractedDataSummary}`;
       const step = this.automationSteps[stepIndex];
       this.lastExecutedStep = stepIndex;
       
-      statusEmitter({ 
-        message: 'Executing automation code...', 
-        type: 'executing', 
-        stepIndex 
-      });
+      statusEmitter({ message: 'Executing automation code...', stepIndex });
 
       // Execute the step - now including statusEmitter in the context
       const stepFunction = new Function(
@@ -573,17 +466,9 @@ ${step.code}${extractedDataSummary}`;
           this.automationSteps[stepIndex].extractedData = result.extractedData;
         }
 
-        statusEmitter({ 
-          message: 'Step executed successfully', 
-          type: 'success', 
-          stepIndex 
-        });
+        statusEmitter({ message: 'Step executed successfully', stepIndex });
       } catch (executionError) {
-        statusEmitter({ 
-          message: `Failed: ${executionError.message}`, 
-          type: 'error', 
-          stepIndex 
-        });
+        statusEmitter({ message: `Failed: ${executionError.message}`, stepIndex });
         throw executionError;
       }
 
@@ -603,7 +488,7 @@ ${step.code}${extractedDataSummary}`;
       }
 
       console.log('\nRETURNING - Final step code:', this.automationSteps[stepIndex].code);
-      
+      console.log(this.automationSteps)
       return { 
         success: true, 
         lastExecutedStep: this.lastExecutedStep,

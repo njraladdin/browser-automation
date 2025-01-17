@@ -127,7 +127,12 @@
       const instructions = input.value;
       const stepBlock = document.querySelector(`#step-${stepNumber}`);
       const addButton = stepBlock.querySelector('.btn-primary');
-      const playButton = document.getElementById('playButton');
+      
+      // Show executing state on the new step block
+      stepBlock.classList.remove('error');
+      stepBlock.classList.add('executing');
+      input.disabled = true;
+      addButton.disabled = true;
       
       const startTime = Date.now();
       const timerDiv = document.createElement('div');
@@ -141,11 +146,6 @@
       }, 100);
       
       activeTimers[stepNumber - 1] = { timerId, startTime };
-      
-      // Disable the input and button, show loading state
-      input.disabled = true;
-      addButton.disabled = true;
-      stepBlock.classList.add('loading');
       
       try {
         const response = await fetch(`/flows/${currentFlowId}/step`, {
@@ -169,21 +169,29 @@
           // Update lastExecutedStep since we just executed this step
           lastExecutedStep = steps.length - 1;
           
+          // Remove executing state since this block will be replaced
+          stepBlock.classList.remove('executing');
           updateStepsList();
           showStatus('Step added and executed successfully!');
-          stepBlock.classList.remove('loading');
-          playButton.disabled = false;
         } else {
-          showStatus(`Error: ${data.error}`);
+          // Show error state on the input block
+          stepBlock.classList.remove('executing');
+          stepBlock.classList.add('error');
           input.disabled = false;
           addButton.disabled = false;
-          stepBlock.classList.remove('loading');
+          showStatus(`Error: ${data.error}`, 'error');
         }
       } catch (error) {
-        showStatus(`Error: ${error.message}`);
+        // Show error state on the input block
+        stepBlock.classList.remove('executing');
+        stepBlock.classList.add('error');
         input.disabled = false;
         addButton.disabled = false;
-        stepBlock.classList.remove('loading');
+        showStatus(`Error: ${error.message}`, 'error');
+      } finally {
+        clearInterval(activeTimers[stepNumber - 1]?.timerId);
+        delete activeTimers[stepNumber - 1];
+        timerDiv.remove();
       }
     }
 
@@ -198,6 +206,7 @@
     }
 
     function updateStepsList() {
+      console.log('[updateStepsList] Starting update with steps:', JSON.stringify(steps, null, 2));
       const stepsList = document.getElementById('stepsList');
       const playButton = document.getElementById('playButton');
       
@@ -262,9 +271,9 @@
                     <span><span class="icon">📊</span> Extracted Data</span>
                     <span class="toggle-icon"></span>
                   </div>
-                  <pre class="data-content">${typeof step.extractedData === 'string' 
-                    ? step.extractedData 
-                    : JSON.stringify(step.extractedData, null, 2)}</pre>
+                  <pre class="data-content"><code class="language-javascript">${typeof step.extractedData === 'string' 
+                    ? escapeHtml(step.extractedData) 
+                    : escapeHtml(JSON.stringify(step.extractedData, null, 2))}</code></pre>
                 </div>
               ` : ''}
               
@@ -331,36 +340,24 @@
       console.log('[Frontend] Executing steps for flow:', currentFlowId);
 
       const playButton = document.getElementById('playButton');
-      
+      playButton.disabled = true;
+      playButton.innerHTML = `<span class="play-icon">▶</span> Running...`;
+
       try {
-        playButton.disabled = true;
-        playButton.innerHTML = `<span class="play-icon">▶</span> Running...`;
+        // Start from the last executed step + 1, or from beginning if none executed
+        const startIndex = lastExecutedStep + 1;
         
-        const response = await fetch(`/flows/${currentFlowId}/execute`, {
-          method: 'POST'
-        });
-        
-        if (!response.ok) {
-          throw new Error(`Server returned ${response.status}`);
+        // Execute steps sequentially using existing executeStep function
+        for (let i = startIndex; i < steps.length; i++) {
+          await executeStep(i);
+          // If executeStep failed, it will throw and break the loop
         }
         
-        const data = await response.json();
-        if (data.success) {
-          console.log('Received steps from server:', data.steps);
-          steps = data.steps;
-          lastExecutedStep = data.lastExecutedStep;
-          updateStepsList();
-          showStatus('Steps executed successfully!');
-          
-          // Only disable if we've executed all steps
-          playButton.disabled = lastExecutedStep >= steps.length - 1;
-        } else {
-          throw new Error(data.error);
-        }
+        showStatus('All steps executed successfully!');
       } catch (error) {
         showStatus(`Error: ${error.message}`, 'error');
-        playButton.disabled = false;
       } finally {
+        playButton.disabled = false;
         const buttonText = lastExecutedStep >= 0 && lastExecutedStep < steps.length - 1 ? 
           'Continue All Steps' : 'Play All Steps';
         playButton.innerHTML = `<span class="play-icon">▶</span> ${buttonText}`;
@@ -415,16 +412,6 @@
       }
     }
 
-    async function closeBrowser() {
-      const status = document.getElementById('status');
-      
-      try {
-        await fetch('/close', { method: 'POST' });
-        status.textContent = 'Browser closed';
-      } catch (error) {
-        status.textContent = `Error: ${error.message}`;
-      }
-    }
 
     function showStatus(message, type = 'success') {
       const status = document.getElementById('status');
@@ -572,8 +559,13 @@
         return;
       }
       
+      console.log(`[executeStep] Starting execution of step ${stepIndex}`);
+      
       const stepBlock = document.querySelector(`#step-${stepIndex + 1}`);
       const playButton = document.querySelector(`#play-step-${stepIndex}`);
+      
+      // Set executing state immediately
+      stepBlock.classList.remove('executed', 'error');
       stepBlock.classList.add('executing');
       playButton.disabled = true;
       
@@ -587,31 +579,54 @@
         timerDiv.textContent = `${elapsed}s`;
       }, 100);
       
-      activeTimers[stepIndex] = { timerId, startTime };
-      
       try {
+        console.log(`[executeStep] Sending request for step ${stepIndex}`);
         const response = await fetch(`/flows/${currentFlowId}/execute-step/${stepIndex}`, {
           method: 'POST'
         });
         
         const data = await response.json();
+        console.log('[executeStep] Received response:', data);
+        
         if (data.success) {
-          clearInterval(activeTimers[stepIndex].timerId);
+          clearInterval(timerId);
           const executionTime = ((Date.now() - startTime) / 1000).toFixed(1);
-          steps[stepIndex].executionTime = `${executionTime}s`;
+          
+          // Update the step with all data from response, including screenshot
+          if (data.steps && data.steps[stepIndex]) {
+            console.log('[executeStep] Step data from server:', data.steps[stepIndex]);
+            steps[stepIndex] = {
+              ...data.steps[stepIndex],
+              executionTime: `${executionTime}s`
+            };
+            console.log('[executeStep] Updated step in steps array:', steps[stepIndex]);
+          } else {
+            console.warn('[executeStep] No step data received for index:', stepIndex);
+          }
+          
           lastExecutedStep = stepIndex;
-          steps = data.steps;
-          steps[stepIndex].executionTime = `${executionTime}s`;
+          
+          // Set success state after execution
+          stepBlock.classList.remove('executing');
+          stepBlock.classList.add('executed');
+          
+          console.log('[executeStep] About to update steps list. Current steps:', steps);
           updateStepsList();
           showStatus('Step executed successfully!');
         } else {
+          // Set error state if execution failed
+          stepBlock.classList.remove('executing');
+          stepBlock.classList.add('error');
           showStatus(`Error: ${data.error}`, 'error');
         }
       } catch (error) {
+        console.error('[executeStep] Error executing step:', error);
+        stepBlock.classList.remove('executing');
+        stepBlock.classList.add('error');
         showStatus(`Error: ${error.message}`, 'error');
       } finally {
+        clearInterval(timerId);
         timerDiv.remove();
-        stepBlock.classList.remove('executing');
         playButton.disabled = false;
       }
     }
@@ -641,23 +656,7 @@
         // Update step UI based on status
         const stepBlock = document.querySelector(`#step-${status.stepIndex + 1}`);
         if (stepBlock) {
-          // Remove any existing status classes
-          stepBlock.classList.remove('executing', 'success', 'error');
-          
-          // Add appropriate class based on status type
-          if (status.type === 'executing' || status.type === 'info') {
-            stepBlock.classList.add('executing');
-          } else if (status.type === 'success') {
-            stepBlock.classList.add('executed');
-            // Also update lastExecutedStep if step completed successfully
-            if (status.stepIndex > lastExecutedStep) {
-              lastExecutedStep = status.stepIndex;
-            }
-          } else if (status.type === 'error') {
-            stepBlock.classList.add('error');
-          }
-          
-          // Update or create status message
+          // Only update the status message, not the visual state
           let statusElement = stepBlock.querySelector('.step-status');
           if (!statusElement) {
             statusElement = document.createElement('div');
@@ -665,7 +664,6 @@
             stepBlock.querySelector('.step-header').appendChild(statusElement);
           }
           statusElement.textContent = status.message;
-          statusElement.className = `step-status ${status.type === 'info' ? 'executing' : status.type}`;
         }
       });
       
