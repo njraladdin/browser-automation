@@ -593,13 +593,13 @@ ${snapshot.html} */
           .map(change => {
             const contentMap = change.contentMap || 
               this.pageSnapshot.createContentMapFromNodes(change.addedNodes);
-            return PageSnapshot.condenseContentMap(contentMap);
+            return PageSnapshot.condenseContentMap(contentMap, false);
           })
           .filter(Boolean)
           .join('\n---\n');
       } else {
         console.log(clc.cyan('▶ Extracting from current page content...'));
-        contentToProcess = PageSnapshot.condenseContentMap(this.pageSnapshot.getContentMap());
+        contentToProcess = PageSnapshot.condenseContentMap(this.pageSnapshot.getContentMap(), false);
       }
 
       const systemPrompt = `You are an AI assistant that parses webpage content and extracts structured information.

@@ -654,7 +654,7 @@ class PageSnapshot {
   }
 
   // Change from instance method to static method that accepts content
-  static condenseContentMap(content) {
+  static condenseContentMap(content, includeSelectors = true) {
     if (!content) {
       return '';
     }
@@ -665,7 +665,7 @@ class PageSnapshot {
         
         // Add tag (with fallback) and aria-label if present
         const tag = item.tag || item.type || 'element';
-        result = `[${tag}${item['aria-label'] ? ` aria-label: ${item['aria-label']}` : ''}${item.selector ? ` selector:"${item.selector}"` : ''}]`;
+        result = `[${tag}${item['aria-label'] ? ` aria-label: ${item['aria-label']}` : ''}${includeSelectors && item.selector ? ` selector:"${item.selector}"` : ''}]`;
         
         // Add content or src
         if (item.content) {
