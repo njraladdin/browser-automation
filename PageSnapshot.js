@@ -96,13 +96,16 @@ class PageSnapshot {
 
       // Load the HTML into cheerio
       this.$ = cheerio.load(html, {
-        decodeEntities: true,
-        xmlMode: false
+        xml: {
+          withDomLvl1: true,
+          xmlMode: false,
+        },
+        isDocument: false
       });
 
       // Clean the page
       const cleanStartTime = Date.now();
-      this.cleanPage();
+     // this.cleanPage();
       this.snapshot.html = this.getCleanedHtml();
       console.log(`Page cleaning took ${Date.now() - cleanStartTime}ms`);
 
@@ -166,9 +169,9 @@ class PageSnapshot {
 
   getCleanedHtml() {
     return this.$.root().html()
-      .replace(/^\s*[\r\n]/gm, '')
-      .replace(/\s+$/gm, '')
-      .replace(/\n\s*\n\s*\n/g, '\n\n');
+      // .replace(/^\s*[\r\n]/gm, '')
+      // .replace(/\s+$/gm, '')
+      // .replace(/\n\s*\n\s*\n/g, '\n\n');
   }
 
   sanitizeSelector(selector) {
@@ -475,11 +478,13 @@ class PageSnapshot {
           mutations.forEach((mutation) => {
             if (mutation.target.tagName === 'STYLE' || 
                 mutation.target.tagName === 'SCRIPT' || 
-                mutation.target.tagName === 'LINK') {
+                mutation.target.tagName === 'LINK' ||
+                mutation.target.tagName === 'HEAD') {
               return;
             }
 
             if (mutation.type === 'childList') {
+              console.log(mutation.addedNodes)
               const addedNode = mutation.addedNodes[0];
               if (addedNode) {
                 const change = {
@@ -492,23 +497,17 @@ class PageSnapshot {
                   },
                   selectorPath: getElementPath(mutation.target),
                   changes: {
-                    added: addedNode ? {
+                    added: {
                       type: addedNode.nodeType === 1 ? 'element' : 'text',
                       content: addedNode.nodeType === 1 ? 
-                        getCleanHTML(addedNode) : // Clean HTML before storing
+                        getCleanHTML(addedNode) : 
                         addedNode.textContent
-                    } : null,
-                    removed: mutation.removedNodes.length > 0 ? {
-                      type: mutation.removedNodes[0].nodeType === 1 ? 'element' : 'text',
-                      tagName: mutation.removedNodes[0].nodeType === 1 ? 
-                        mutation.removedNodes[0].tagName : null,
-                      textContent: mutation.removedNodes[0].nodeType === 3 ? 
-                        mutation.removedNodes[0].textContent : null
-                    } : null
+                    }
+                   
                   }
                 };
 
-                if (change.changes.added || change.changes.removed) {
+                if (change.changes.added) {
                   window.__domChanges.push(change);
                 }
               }
@@ -518,8 +517,8 @@ class PageSnapshot {
 
         observer.observe(document.body, {
           childList: true,
-          characterData: false,
           subtree: true,
+          characterData: false,
           characterDataOldValue: false,
           attributes: false
         });
@@ -545,7 +544,6 @@ class PageSnapshot {
 
           if (changes && changes.length > 0) {
             changes.forEach(change => {
-              if (change.type === 'childList') {
                 const addedNode = change.changes.added;
                 if (addedNode && addedNode.type === 'element') {
                   const html = addedNode.content;
@@ -561,14 +559,14 @@ class PageSnapshot {
                     isDocument: false
                   });
 
-                  const { interactive, content } = this._generateMapsFromCheerio($, null, null, baseSelector);
+                  const { interactive, content } = this._generateMapsFromCheerio($, null, null, baseSelector, html);
 
                   // Debug log before adding items
-                  console.log('Processing DOM change:', {
-                    baseSelector,
-                    foundInteractive: interactive.length,
-                    foundContent: content.length
-                  });
+                  // console.log('Processing DOM change:', {
+                  //   baseSelector,
+                  //   foundInteractive: interactive.length,
+                  //   foundContent: content.length
+                  // });
 
                   if (content.length > 0 || interactive.length > 0) {
                     if (interactive.length > 0) {
@@ -592,7 +590,7 @@ class PageSnapshot {
                     }
                   }
                 }
-              }
+              
             });
 
             // Log the accumulated changes
@@ -601,13 +599,15 @@ class PageSnapshot {
               contentCount: this.latestDOMChangesForContentElements.length
             });
 
-            // Save full accumulated changes periodically
+             // Save full accumulated changes periodically
             fs.writeFileSync(
-              path.join(__dirname, 'test', `accumulated_changes_${Date.now()}.json`),
-              JSON.stringify({
-                interactive: this.latestDOMChangesForInteractiveElements,
-                content: this.latestDOMChangesForContentElements
-              }, null, 2),
+              path.join(__dirname, 'test', `latest_interactive_changes_${Date.now()}.json`),
+              JSON.stringify(this.latestDOMChangesForInteractiveElements, null, 2),
+              'utf8'
+            );
+            fs.writeFileSync(
+              path.join(__dirname, 'test', `latest_content_changes_${Date.now()}.json`), 
+              JSON.stringify(this.latestDOMChangesForContentElements, null, 2),
               'utf8'
             );
           }
@@ -726,7 +726,7 @@ class PageSnapshot {
     return maps;
   }
 
-  _generateMapsFromCheerio($, shadowDOM = null, iframeData = null, baseSelector = '') {
+  _generateMapsFromCheerio($, shadowDOM = null, iframeData = null, baseSelector = '', html = '') {
     const interactive = [];
     const content = [];
 
@@ -769,7 +769,8 @@ class PageSnapshot {
           'aria-label': $el.attr('aria-label'),
           value: $el.attr('value'),
           name: $el.attr('name'),
-          label: this.findAssociatedLabel($el)
+          label: this.findAssociatedLabel($el),
+          html: $el.clone().wrap('<div>').parent().html() // Get HTML for this specific element
         });
       }
   // Get clean text content by removing style/script elements first
@@ -781,14 +782,15 @@ class PageSnapshot {
       if ($el.is('button, [role="button"]')) {
         interactive.push({
           type: 'button',
-          text: getCleanText($el),  // Use clean text here
+          text: getCleanText($el),
           selector: selector,
           buttonType: $el.attr('type'),
           id: $el.attr('id'),
           role: $el.attr('role'),
           'aria-label': $el.attr('aria-label'),
           disabled: $el.prop('disabled'),
-          nearbyElementsText: this.getNearbyElementsText($el)
+          nearbyElementsText: this.getNearbyElementsText($el),
+          html: $el.clone().wrap('<div>').parent().html() // Get HTML for this specific element
         });
       }
 
@@ -804,7 +806,8 @@ class PageSnapshot {
             selector: selector,
             id: $el.attr('id'),
             role: $el.attr('role'),
-            'aria-label': ariaLabel
+            'aria-label': ariaLabel,
+            html: $el.clone().wrap('<div>').parent().html() // Get HTML for this specific element
           });
         }
       }
@@ -820,6 +823,7 @@ class PageSnapshot {
           tag: element.tagName.toLowerCase(),
           selector: selector,
           nearbyText,
+          html: $el.clone().wrap('<div>').parent().html(), // Get HTML for this specific element
           ...(element.tagName.toLowerCase() === 'a' && { href: $el.attr('href') })
         });
       }
@@ -833,7 +837,8 @@ class PageSnapshot {
             src: src,
             alt: $el.attr('alt'),
             selector: selector,
-            nearbyText
+            nearbyText,
+            html: $el.clone().wrap('<div>').parent().html() // Get HTML for this specific element
           });
         }
       } else if (element.tagName.toLowerCase() === 'video') {
@@ -853,10 +858,11 @@ class PageSnapshot {
           content.push({
             type: 'media',
             mediaType: 'video',
-            src: src || poster, // Use src if exists, fallback to poster
+            src: src || poster,
             sources: sources.length > 0 ? sources : undefined,
             selector: selector,
-            nearbyText
+            nearbyText,
+            html: $el.clone().wrap('<div>').parent().html() // Get HTML for this specific element
           });
         }
       }
@@ -953,84 +959,58 @@ class PageSnapshot {
 
   async getNewMapItems(page) {
     try {
+      // Get new snapshot
       await this.captureSnapshot(page);
       const newContent = this.snapshot.content;
       const newInteractive = this.snapshot.interactive;
 
-      // Save snapshot data
-      fs.writeFileSync(
-        path.join(__dirname, 'test', `debug_snapshot_${Date.now()}.json`),
-        JSON.stringify({
-          content: newContent,
-          interactive: newInteractive
-        }, null, 2)
+      // Create sets of HTML signatures from DOM changes
+      const changedContentHtml = new Set(
+        this.latestDOMChangesForContentElements.map(item => item.html)
+      );
+      const changedInteractiveHtml = new Set(
+        this.latestDOMChangesForInteractiveElements.map(item => item.html)
       );
 
-      // Log and save DOM changes before processing
-      console.log('DOM Changes before processing:', {
-        contentChangesCount: this.latestDOMChangesForContentElements.length,
-        interactiveChangesCount: this.latestDOMChangesForInteractiveElements.length
+      // Log initial counts
+      console.log('DOM Changes found:', {
+        contentChangesCount: changedContentHtml.size,
+        interactiveChangesCount: changedInteractiveHtml.size
       });
 
-      fs.writeFileSync(
-        path.join(__dirname, 'test', `debug_dom_changes_${Date.now()}.json`),
-        JSON.stringify({
-          content: this.latestDOMChangesForContentElements,
-          interactive: this.latestDOMChangesForInteractiveElements
-        }, null, 2)
-      );
-
-      // Create sets of selectors from DOM changes
-      const changedContentSelectors = new Set(
-        this.latestDOMChangesForContentElements.map(item => item.selector)
-      );
-
-      const changedInteractiveSelectors = new Set(
-        this.latestDOMChangesForInteractiveElements.map(item => item.selector)
-      );
-
-      console.log('Selectors found:', {
-        contentSelectorsCount: changedContentSelectors.size,
-        interactiveSelectorsCount: changedInteractiveSelectors.size
-      });
-
-      // Filter new items using selectors
+      // Filter new items by matching HTML signatures
       const newItems = {
         content: newContent.filter(item => {
-          const isNew = changedContentSelectors.has(item.selector);
-          if (isNew) console.log('Found new content item:', {
-            selector: item.selector,
-            type: item.type,
-            content: item.content || item.text
-          });
+          const isNew = changedContentHtml.has(item.html);
+          // if (isNew) console.log('Found new content item:', {
+          //   type: item.type,
+          //   content: item.content || item.text,
+          //   html: item.html.substring(0, 100) + '...' // Log truncated HTML for debugging
+          // });
           return isNew;
         }),
         interactive: newInteractive.filter(item => {
-          const isNew = changedInteractiveSelectors.has(item.selector);
-          if (isNew) console.log('Found new interactive item:', {
-            selector: item.selector,
-            type: item.type,
-            text: item.text || item['aria-label']
-          });
+          const isNew = changedInteractiveHtml.has(item.html);
+          // if (isNew) console.log('Found new interactive item:', {
+          //   type: item.type,
+          //   text: item.text || item['aria-label'],
+          //   html: item.html.substring(0, 100) + '...' // Log truncated HTML for debugging
+          // });
           return isNew;
         })
       };
 
-      // Save filtered results
-      fs.writeFileSync(
-        path.join(__dirname, 'test', `debug_filtered_${Date.now()}.json`),
-        JSON.stringify(newItems, null, 2)
-      );
-
+      // Log results
       console.log('Filtered results:', {
         newContentCount: newItems.content.length,
         newInteractiveCount: newItems.interactive.length
       });
 
-      // Clear the changes arrays AFTER using them
+      // Clear the changes arrays after using them
       this.latestDOMChangesForContentElements = [];
       this.latestDOMChangesForInteractiveElements = [];
 
+      // Save debug files if we found new items
       if (newItems.content.length > 0 || newItems.interactive.length > 0) {
         await this.saveNewItemsDebugFiles(newItems);
       }
@@ -1100,29 +1080,29 @@ if (require.main === module) {
       console.log('\nSnapshot captured successfully!');
       console.log('Files saved with timestamp:', result.timestamp);
       
-      // // Set up periodic content checking
-      // console.log('\nStarting periodic content check...');
-      // const checkInterval = setInterval(async () => {
-      //   try {
-      //     console.log('\nChecking for new content...');
-      //     const newItems = await snapshot.getNewMapItems(page);
-      //     console.log(`Found ${newItems.content.length} new content items`);
-      //     console.log(`Found ${Object.values(newItems.interactive).flat().length} new interactive items`);
-      //   } catch (error) {
-      //     console.error('Error during content check:', error);
-      //     clearInterval(checkInterval);
-      //   }
-      // }, 10000); // Check every 10 seconds
+      // Set up periodic content checking
+      console.log('\nStarting periodic content check...');
+      const checkInterval = setInterval(async () => {
+        try {
+          console.log('\nChecking for new content...');
+          const newItems = await snapshot.getNewMapItems(page);
+          console.log(`Found ${newItems.content.length} new content items`);
+          console.log(`Found ${Object.values(newItems.interactive).flat().length} new interactive items`);
+        } catch (error) {
+          console.error('Error during content check:', error);
+          clearInterval(checkInterval);
+        }
+      }, 10000); // Check every 10 seconds
 
-      // // Allow manual termination with Ctrl+C
-      // process.on('SIGINT', () => {
-      //   console.log('\nStopping content check...');
-      //   clearInterval(checkInterval);
-      //   if (browser) {
-      //     browser.close();
-      //   }
-      //   process.exit(0);
-      // });
+      // Allow manual termination with Ctrl+C
+      process.on('SIGINT', () => {
+        console.log('\nStopping content check...');
+        clearInterval(checkInterval);
+        if (browser) {
+          browser.close();
+        }
+        process.exit(0);
+      });
    
     } catch (error) {
       console.error('Test failed:', error);

@@ -296,14 +296,15 @@ ${step.code}${extractedDataSummary}`;
       let contentToProcess;
       if (options.extractFromNewlyAddedContent) {
         console.log(clc.cyan('▶ Extracting from newly added content...'));
-        const newItems = await this.pageSnapshot.getNewContentMapItems(this.page);
+        const newItems = await this.pageSnapshot.getNewMapItems(this.page);
+        const newContentItems = newItems.content;
         
-        if (!newItems || newItems.length === 0) {
+        if (!newContentItems || newContentItems.length === 0) {
           console.log(clc.yellow('⚠ No new content found'));
           return { items: [] };
         }
 
-        contentToProcess = PageSnapshot.condenseContentMap(newItems, false);
+        contentToProcess = PageSnapshot.condenseContentMap(newContentItems, false);
 
       } else {
         console.log(clc.cyan('▶ Extracting from current page content...'));
