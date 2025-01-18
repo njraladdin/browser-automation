@@ -18,6 +18,9 @@ class PageSnapshot {
     this.latestDOMChanges = [];
     this.observer = null;
     this.processedElements = new Set();
+
+    this.latestDOMChangesForInteractiveElements = [];
+    this.latestDOMChangesForContentElements = [];
   }
 
   async captureSnapshot(page) {
@@ -303,15 +306,10 @@ class PageSnapshot {
     const interactiveContent = await Promise.resolve(this.snapshot.interactive);
 
     // Create a copy of interactive content with both selectors
-    const interactiveWithSelectors = JSON.parse(JSON.stringify(interactiveContent));
-    
-    // Add original selectors to each section
-    ['inputs', 'buttons', 'links'].forEach(section => {
-      interactiveWithSelectors[section] = interactiveWithSelectors[section].map(item => ({
-        ...item,
-        originalSelector: this.selectorToOriginalMap.get(item.selector)
-      }));
-    });
+    const interactiveWithSelectors = interactiveContent.map(item => ({
+      ...item,
+      originalSelector: this.selectorToOriginalMap.get(item.selector)
+    }));
     
     fs.writeFileSync(
       path.join(testDir, `page_${timestamp}.html`),
@@ -422,6 +420,23 @@ class PageSnapshot {
       await page.evaluate(() => {
         window.__domChanges = [];
         
+        // Helper function to get clean HTML content
+        function getCleanHTML(element) {
+          // Skip if not an element
+          if (element.nodeType !== 1) return element.textContent;
+          
+          // Create a temporary container
+          const container = document.createElement('div');
+          container.appendChild(element.cloneNode(true));
+          
+          // Remove all style/script elements
+          const styles = container.getElementsByTagName('style');
+          const scripts = container.getElementsByTagName('script');
+          [...styles, ...scripts].forEach(el => el.remove());
+          
+          return container.innerHTML;
+        }
+
         // Helper function to get element's selector path
         function getElementPath(element) {
           const path = [];
@@ -436,13 +451,7 @@ class PageSnapshot {
               break;
             } else {
               const classes = Array.from(currentNode.classList)
-                .filter(cls => 
-                  !cls.match(/^(hover|focus|active)/) &&
-                  !cls.includes('(') &&
-                  !cls.includes(')') &&
-                  !cls.includes('[') &&
-                  !cls.includes(']')
-                );
+                .filter(cls => !cls.match(/^(hover|focus|active)/) && !cls.includes('(') && !cls.includes(')') && !cls.includes('[') && !cls.includes(']'));
               
               if (classes.length) {
                 selector += '.' + classes.join('.');
@@ -468,7 +477,6 @@ class PageSnapshot {
         // Create mutation observer
         const observer = new MutationObserver((mutations) => {
           mutations.forEach((mutation) => {
-            // Skip style/script changes
             if (mutation.target.tagName === 'STYLE' || 
                 mutation.target.tagName === 'SCRIPT' || 
                 mutation.target.tagName === 'LINK') {
@@ -486,10 +494,13 @@ class PageSnapshot {
                     id: mutation.target.id,
                     className: mutation.target.className
                   },
+                  selectorPath: getElementPath(mutation.target),
                   changes: {
                     added: addedNode ? {
                       type: addedNode.nodeType === 1 ? 'element' : 'text',
-                      content: addedNode.nodeType === 1 ? addedNode.outerHTML : addedNode.textContent
+                      content: addedNode.nodeType === 1 ? 
+                        getCleanHTML(addedNode) : // Clean HTML before storing
+                        addedNode.textContent
                     } : null,
                     removed: mutation.removedNodes.length > 0 ? {
                       type: mutation.removedNodes[0].nodeType === 1 ? 'element' : 'text',
@@ -501,38 +512,20 @@ class PageSnapshot {
                   }
                 };
 
-                // Only save if there were actual changes
                 if (change.changes.added || change.changes.removed) {
                   window.__domChanges.push(change);
                 }
               }
-            } 
-            else if (mutation.type === 'characterData') {
-              // For text changes, only store the actual text difference
-              const change = {
-                type: 'characterData',
-                timestamp: new Date().toISOString(),
-                selectorPath: getElementPath(mutation.target),
-                changes: {
-                  oldValue: mutation.oldValue,
-                  newValue: mutation.target.textContent
-                },
-                parentInfo: {
-                  tagName: mutation.target.parentNode.tagName,
-                  selectorPath: getElementPath(mutation.target.parentNode)
-                }
-              };
-              
-              window.__domChanges.push(change);
             }
           });
         });
 
         observer.observe(document.body, {
           childList: true,
-          characterData: true,
+          characterData: false,
           subtree: true,
-          characterDataOldValue: true
+          characterDataOldValue: false,
+          attributes: false
         });
 
         window.__domObserver = observer;
@@ -555,62 +548,75 @@ class PageSnapshot {
           });
 
           if (changes && changes.length > 0) {
-            try {
-              console.log('Processing changes...');
-              const processedChanges = changes.map(change => {
-                let html = '';
-                let baseSelector = '';
-                if (change.type === 'childList') {
-                  const addedNode = change.changes.added;
-                  if (addedNode && addedNode.type === 'element') {
-                    html = addedNode.content;
-                    baseSelector = change.selectorPath;
+            changes.forEach(change => {
+              if (change.type === 'childList') {
+                const addedNode = change.changes.added;
+                if (addedNode && addedNode.type === 'element') {
+                  const html = addedNode.content;
+                  const baseSelector = change.selectorPath;
+
+                  if (!html) return;
+
+                  const $ = cheerio.load(html, {
+                    xml: {
+                      withDomLvl1: true,
+                      xmlMode: false,
+                    },
+                    isDocument: false
+                  });
+
+                  const { interactive, content } = this._generateMapsFromCheerio($, null, null, baseSelector);
+
+                  // Debug log before adding items
+                  console.log('Processing DOM change:', {
+                    baseSelector,
+                    foundInteractive: interactive.length,
+                    foundContent: content.length
+                  });
+
+                  if (content.length > 0 || interactive.length > 0) {
+                    if (interactive.length > 0) {
+                      this.latestDOMChangesForInteractiveElements.push(...interactive);
+                      // Debug log interactive items
+                      // fs.writeFileSync(
+                      //   path.join(__dirname, 'test', `debug_interactive_changes_${Date.now()}.json`),
+                      //   JSON.stringify(interactive, null, 2),
+                      //   'utf8'
+                      // );
+                    }
+
+                    if (content.length > 0) {
+                      this.latestDOMChangesForContentElements.push(...content);
+                      // Debug log content items
+                      // fs.writeFileSync(
+                      //   path.join(__dirname, 'test', `debug_content_changes_${Date.now()}.json`),
+                      //   JSON.stringify(content, null, 2),
+                      //   'utf8'
+                      // );
+                    }
                   }
                 }
-
-                if (!html) {
-                  return null;  // Return null for changes without HTML content
-                }
-
-                const $ = cheerio.load(html, {
-                  xml: {
-                    withDomLvl1: true,
-                    xmlMode: false,
-                  },
-                  isDocument: false
-                });
-                
-                const { interactive, content } = this._generateMapsFromCheerio($, null, null, baseSelector);
-                
-                // Only return changes that actually have content or interactive elements
-                if (content.length === 0 && 
-                    interactive.inputs.length === 0 && 
-                    interactive.buttons.length === 0 && 
-                    interactive.links.length === 0) {
-                  return null;
-                }
-
-                return {
-                  type: change.type,
-                  timestamp: change.timestamp,
-                  contentMap: content,
-                  interactiveMap: interactive
-                };
-              }).filter(change => change !== null);  // Filter out null changes
-
-              // Only save if we have non-empty changes
-              if (processedChanges.length > 0) {
-                this.latestDOMChanges.push(...processedChanges);
-                await this.logChangesToFile(processedChanges);
               }
-            } catch (error) {
-              console.error('Error processing changes:', error);
-              await this.logChangesToFile(changes);
-            }
+            });
+
+            // Log the accumulated changes
+            console.log('Current accumulated changes:', {
+              interactiveCount: this.latestDOMChangesForInteractiveElements.length,
+              contentCount: this.latestDOMChangesForContentElements.length
+            });
+
+            // Save full accumulated changes periodically
+            fs.writeFileSync(
+              path.join(__dirname, 'test', `accumulated_changes_${Date.now()}.json`),
+              JSON.stringify({
+                interactive: this.latestDOMChangesForInteractiveElements,
+                content: this.latestDOMChangesForContentElements
+              }, null, 2),
+              'utf8'
+            );
           }
         } catch (error) {
-          console.log('Error in DOM observer interval:', error);
-          clearInterval(this.changeCollectionInterval);
+          console.error('Error in DOM observer interval:', error);
         }
       }, 1000);
 
@@ -663,9 +669,6 @@ class PageSnapshot {
     return this.latestDOMChanges;
   }
 
-  getContentMap() { 
-    return this.snapshot.content; 
-  }
 
   // Change from instance method to static method that accepts content
   static condenseContentMap(content, includeSelectors = true) {
@@ -723,9 +726,7 @@ class PageSnapshot {
     this.snapshot.content = maps.content;
     
     console.log(`Generated maps with:
-      - ${maps.interactive.inputs.length} inputs
-      - ${maps.interactive.buttons.length} buttons 
-      - ${maps.interactive.links.length} links
+      - ${maps.interactive.length} interactive items
       - ${maps.content.length} content items
       Time taken: ${Date.now() - mapsStartTime}ms`);
     
@@ -733,11 +734,7 @@ class PageSnapshot {
   }
 
   _generateMapsFromCheerio($, shadowDOM = null, iframeData = null, baseSelector = '') {
-    const interactive = {
-      inputs: [],
-      buttons: [],
-      links: [],
-    };
+    const interactive = [];
     const content = [];
 
     // Helper function to process selector
@@ -769,8 +766,9 @@ class PageSnapshot {
 
       // Process for interactive map
       if ($el.is('input, textarea, select, [type="search"], [contenteditable="true"], faceplate-search-input, *[role="searchbox"], *[role="textbox"]')) {
-        interactive.inputs.push({
-          type: $el.attr('type') || element.tagName.toLowerCase(),
+        interactive.push({
+          type: 'input',
+          inputType: $el.attr('type') || element.tagName.toLowerCase(),
           selector: selector,
           placeholder: $el.attr('placeholder'),
           id: $el.attr('id'),
@@ -781,12 +779,18 @@ class PageSnapshot {
           label: this.findAssociatedLabel($el)
         });
       }
-
+  // Get clean text content by removing style/script elements first
+      const getCleanText = ($elem) => {
+        const $clone = $elem.clone();
+        $clone.find('style, script').remove();
+        return $clone.text().trim();
+      };
       if ($el.is('button, [role="button"]')) {
-        interactive.buttons.push({
-          text: $el.text().trim(),
+        interactive.push({
+          type: 'button',
+          text: getCleanText($el),  // Use clean text here
           selector: selector,
-          type: $el.attr('type'),
+          buttonType: $el.attr('type'),
           id: $el.attr('id'),
           role: $el.attr('role'),
           'aria-label': $el.attr('aria-label'),
@@ -800,7 +804,8 @@ class PageSnapshot {
         const ariaLabel = $el.attr('aria-label');
         
         if (text || ariaLabel) {
-          interactive.links.push({
+          interactive.push({
+            type: 'link',
             text: text,
             href: $el.attr('href'),
             selector: selector,
@@ -811,7 +816,6 @@ class PageSnapshot {
         }
       }
 
-      const elementUniqueId = this.getElementUniqueId($el);
       const nearbyText = this.getNearbyElementsText($el);
 
       // Process for content map
@@ -823,7 +827,6 @@ class PageSnapshot {
           tag: element.tagName.toLowerCase(),
           selector: selector,
           nearbyText,
-          uniqueId: elementUniqueId,
           ...(element.tagName.toLowerCase() === 'a' && { href: $el.attr('href') })
         });
       }
@@ -835,8 +838,7 @@ class PageSnapshot {
           src: $el.attr('src'),
           alt: $el.attr('alt'),
           selector: selector,
-          nearbyText,
-          uniqueId: elementUniqueId
+          nearbyText
         });
       } else if (element.tagName.toLowerCase() === 'video') {
         // Check for source elements within video
@@ -858,8 +860,7 @@ class PageSnapshot {
             src: src || poster, // Use src if exists, fallback to poster
             sources: sources.length > 0 ? sources : undefined,
             selector: selector,
-            nearbyText,
-            uniqueId: this.getElementUniqueId($el)
+            nearbyText
           });
         }
       }
@@ -959,120 +960,119 @@ class PageSnapshot {
     console.log(`Cleared ${clearedCount} DOM changes`);
   }
 
-  async getNewContentMapItems(page) {
+  async getNewMapItems(page) {
     try {
-      // Store current content
-      const currentContent = this.snapshot.content;
-
-      // Take a new snapshot using current instance
       await this.captureSnapshot(page);
-      const newContent = this.getContentMap();
-      
-      // Create a set of existing content signatures for faster lookup
-      const existingContentSignatures = new Set(
-        // Include only items from the last portion of current content for overlap
-        currentContent.slice(-20).map(item => this.getContentSignature(item))
+      const newContent = this.snapshot.content;
+      const newInteractive = this.snapshot.interactive;
+
+      // Save snapshot data
+      fs.writeFileSync(
+        path.join(__dirname, 'test', `debug_snapshot_${Date.now()}.json`),
+        JSON.stringify({
+          content: newContent,
+          interactive: newInteractive
+        }, null, 2)
       );
-      
-      // Filter out items that exist in the overlap region
-      const newItems = newContent.filter(item => 
-        !existingContentSignatures.has(this.getContentSignature(item))
+
+      // Log and save DOM changes before processing
+      console.log('DOM Changes before processing:', {
+        contentChangesCount: this.latestDOMChangesForContentElements.length,
+        interactiveChangesCount: this.latestDOMChangesForInteractiveElements.length
+      });
+
+      fs.writeFileSync(
+        path.join(__dirname, 'test', `debug_dom_changes_${Date.now()}.json`),
+        JSON.stringify({
+          content: this.latestDOMChangesForContentElements,
+          interactive: this.latestDOMChangesForInteractiveElements
+        }, null, 2)
       );
 
-      // Save new items to file if there are any
-      if (newItems.length > 0) {
-        const testDir = path.join(__dirname, 'test');
-        if (!fs.existsSync(testDir)) {
-          fs.mkdirSync(testDir);
-        }
+      // Create sets of selectors from DOM changes
+      const changedContentSelectors = new Set(
+        this.latestDOMChangesForContentElements.map(item => item.selector)
+      );
 
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const filePath = path.join(testDir, `new_content_${timestamp}.json`);
-        
-        fs.writeFileSync(
-          filePath,
-          JSON.stringify(newItems, null, 2),
-          'utf8'
-        );
+      const changedInteractiveSelectors = new Set(
+        this.latestDOMChangesForInteractiveElements.map(item => item.selector)
+      );
 
-        console.log(`Found ${newItems.length} new content items`);
-        console.log(`Saved new content to: ${filePath}`);
+      console.log('Selectors found:', {
+        contentSelectorsCount: changedContentSelectors.size,
+        interactiveSelectorsCount: changedInteractiveSelectors.size
+      });
+
+      // Filter new items using selectors
+      const newItems = {
+        content: newContent.filter(item => {
+          const isNew = changedContentSelectors.has(item.selector);
+          if (isNew) console.log('Found new content item:', {
+            selector: item.selector,
+            type: item.type,
+            content: item.content || item.text
+          });
+          return isNew;
+        }),
+        interactive: newInteractive.filter(item => {
+          const isNew = changedInteractiveSelectors.has(item.selector);
+          if (isNew) console.log('Found new interactive item:', {
+            selector: item.selector,
+            type: item.type,
+            text: item.text || item['aria-label']
+          });
+          return isNew;
+        })
+      };
+
+      // Save filtered results
+      fs.writeFileSync(
+        path.join(__dirname, 'test', `debug_filtered_${Date.now()}.json`),
+        JSON.stringify(newItems, null, 2)
+      );
+
+      console.log('Filtered results:', {
+        newContentCount: newItems.content.length,
+        newInteractiveCount: newItems.interactive.length
+      });
+
+      // Clear the changes arrays AFTER using them
+      this.latestDOMChangesForContentElements = [];
+      this.latestDOMChangesForInteractiveElements = [];
+
+      if (newItems.content.length > 0 || newItems.interactive.length > 0) {
+        await this.saveNewItemsDebugFiles(newItems);
       }
-      
+
       return newItems;
     } catch (error) {
-      console.error('Error in getNewContentMapItems:', error);
-      return [];
+      console.error('Error in getNewMapItems:', error);
+      return {
+        content: [],
+        interactive: []
+      };
     }
   }
 
-  getContentSignature(item) {
-    // Only use the uniqueId for comparison - if two elements have different paths,
-    // they should be considered different elements even if content is the same
-    return item.uniqueId;
-  }
-
-  getElementUniqueId($el) {
-    const parts = [];
-    
-    // Get element's own info
-    const tag = $el.prop('tagName')?.toLowerCase();
-    const ownText = $el.clone().children().remove().end().text().trim();
-    const attributes = $el.get(0)?.attribs || {};
-    
-    // Add basic element info
-    parts.push(`tag:${tag}`);
-    if (ownText) parts.push(`text:${ownText}`);
-    Object.entries(attributes).forEach(([key, value]) => {
-      if (value && value.trim()) {
-        parts.push(`${key}:${value.trim()}`);
-      }
-    });
-
-    // Special handling for video elements
-    if (tag === 'video') {
-      // Add source elements info
-      $el.find('source').each((index, sourceEl) => {
-        const $source = this.$(sourceEl);
-        const src = $source.attr('src');
-        const type = $source.attr('type');
-        if (src) parts.push(`source${index}:${src}`);
-        if (type) parts.push(`sourceType${index}:${type}`);
-      });
-      
-      // Add poster if present
-      const poster = $el.attr('poster');
-      if (poster) parts.push(`poster:${poster}`);
-      
-      // Add parent's content or id to differentiate between similar videos
-      const $parent = $el.parent();
-      const parentId = $parent.attr('id');
-      const parentContent = $parent.clone().children().remove().end().text().trim();
-      if (parentId) parts.push(`parentId:${parentId}`);
-      if (parentContent) parts.push(`parentContent:${parentContent}`);
+  async saveNewItemsDebugFiles(newItems) {
+    const testDir = path.join(__dirname, 'test');
+    if (!fs.existsSync(testDir)) {
+      fs.mkdirSync(testDir);
     }
 
-    // Add index in parent for structural context
-    const index = $el.parent().children().index($el);
-    parts.push(`index:${index}`);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    
+    if (newItems.content.length > 0) {
+      const contentPath = path.join(testDir, `new_content_${timestamp}.json`);
+      fs.writeFileSync(contentPath, JSON.stringify(newItems.content, null, 2), 'utf8');
+      console.log(`Saved ${newItems.content.length} new content items to: ${contentPath}`);
+    }
 
-    // Add immediate siblings text
-    const prevText = $el.prev().text().trim();
-    const nextText = $el.next().text().trim();
-    if (prevText) parts.push(`prev:${prevText.substring(0, 50)}`);
-    if (nextText) parts.push(`next:${nextText.substring(0, 50)}`);
-
-    // Add children text
-    $el.children().slice(0, 2).each((index, child) => {
-      const childText = this.$(child).text().trim();
-      if (childText) {
-        parts.push(`child${index+1}:${childText.substring(0, 50)}`);
-      }
-    });
-
-    // Create a hash of all parts
-    const fullString = parts.join('||');
-    return require('crypto').createHash('md5').update(fullString).digest('hex');
+    if (newItems.interactive.length > 0) {
+      const interactivePath = path.join(testDir, `new_interactive_${timestamp}.json`);
+      fs.writeFileSync(interactivePath, JSON.stringify(newItems.interactive, null, 2), 'utf8');
+      console.log(`Saved ${newItems.interactive.length} new interactive items to: ${interactivePath}`);
+    }
   }
 }
 
@@ -1085,7 +1085,8 @@ if (require.main === module) {
   (async () => {
     let browser;
     try {
-      const url = 'https://twitter.com/elonmusk';
+      const url = 'https://google.com';
+      // const url = 'https://twitter.com/elonmusk';
       console.log(`Testing PageSnapshot with URL: ${url}`);
 
       console.log('Launching browser...');
@@ -1108,28 +1109,29 @@ if (require.main === module) {
       console.log('\nSnapshot captured successfully!');
       console.log('Files saved with timestamp:', result.timestamp);
       
-      // Set up periodic content checking
-      console.log('\nStarting periodic content check...');
-      const checkInterval = setInterval(async () => {
-        try {
-          console.log('\nChecking for new content...');
-          const newItems = await snapshot.getNewContentMapItems(page);
-          console.log(`Found ${newItems.length} new items at ${new Date().toISOString()}`);
-        } catch (error) {
-          console.error('Error during content check:', error);
-          clearInterval(checkInterval);
-        }
-      }, 10000); // Check every 10 seconds
+      // // Set up periodic content checking
+      // console.log('\nStarting periodic content check...');
+      // const checkInterval = setInterval(async () => {
+      //   try {
+      //     console.log('\nChecking for new content...');
+      //     const newItems = await snapshot.getNewMapItems(page);
+      //     console.log(`Found ${newItems.content.length} new content items`);
+      //     console.log(`Found ${Object.values(newItems.interactive).flat().length} new interactive items`);
+      //   } catch (error) {
+      //     console.error('Error during content check:', error);
+      //     clearInterval(checkInterval);
+      //   }
+      // }, 10000); // Check every 10 seconds
 
-      // Allow manual termination with Ctrl+C
-      process.on('SIGINT', () => {
-        console.log('\nStopping content check...');
-        clearInterval(checkInterval);
-        if (browser) {
-          browser.close();
-        }
-        process.exit(0);
-      });
+      // // Allow manual termination with Ctrl+C
+      // process.on('SIGINT', () => {
+      //   console.log('\nStopping content check...');
+      //   clearInterval(checkInterval);
+      //   if (browser) {
+      //     browser.close();
+      //   }
+      //   process.exit(0);
+      // });
    
     } catch (error) {
       console.error('Test failed:', error);

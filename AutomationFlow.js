@@ -496,27 +496,23 @@ ${step.code}${extractedDataSummary}`;
     try {
       console.log(clc.cyan('\n▶ Finding selector for:'), description);
 
-      const latestChanges = this.pageSnapshot.getLatestDOMChanges();
-      console.log(clc.cyan(`▶ Found ${latestChanges.length} DOM changes`));
-
-      if (!latestChanges || latestChanges.length === 0) {
-        console.log(clc.red('✗ No DOM changes tracked'));
-        throw new Error('No DOM changes tracked');
+      // Take a snapshot and get new items
+      const newItems = await this.pageSnapshot.getNewMapItems(this.page);
+      
+      if (!newItems.content.length && !Object.values(newItems.interactive).flat().length) {
+        console.log(clc.red('✗ No new elements found'));
+        throw new Error('No new elements found');
       }
 
       // Process content maps
-      const contentChanges = latestChanges
-        .filter(change => change.contentMap)
-        .map(change => PageSnapshot.condenseContentMap(change.contentMap))
-        .filter(Boolean)
-        .join('\n\n=== New Content Change ===\n\n');
+      const contentChanges = newItems.content.length > 0 ? 
+        PageSnapshot.condenseContentMap(newItems.content) : '';
 
       // Process interactive maps
-      const interactiveChanges = latestChanges
-        .filter(change => change.interactiveMap)
-        .map(change => JSON.stringify(change.interactiveMap, null, 2))
-        .filter(Boolean)
-        .join('\n\n=== New Interactive Change ===\n\n');
+      const interactiveChanges = Object.values(newItems.interactive).flat().length > 0 ? 
+        JSON.stringify(newItems.interactive, null, 2) : '';
+
+
 
       const systemPrompt = await this.loadPrompt('find_dynamic_selector', {
         content_changes: contentChanges,
@@ -620,18 +616,20 @@ ${step.code}${extractedDataSummary}`;
     try {
       console.log(clc.cyan('\n▶ Generating next action code for:'), description);
 
-      const latestChanges = this.pageSnapshot.getLatestDOMChanges();
-      console.log(clc.cyan(`▶ Found ${latestChanges.length} DOM changes`));
-
-      if (!latestChanges || latestChanges.length === 0) {
-        throw new Error('No DOM changes tracked');
+      // Get new items instead of using DOM changes
+      const newItems = await this.pageSnapshot.getNewMapItems(this.page);
+      
+      if (!newItems.content.length && !Object.values(newItems.interactive).flat().length) {
+        console.log(clc.red('✗ No new elements found'));
+        throw new Error('No new elements found');
       }
 
       // Get current page content map for context
       const contentMap = this.pageSnapshot.getContentMap();
 
       const systemPrompt = await this.loadPrompt('generate_next_action', {
-        latest_changes: JSON.stringify(latestChanges, null, 2),
+        new_content: JSON.stringify(newItems.content, null, 2),
+        new_interactive: JSON.stringify(newItems.interactive, null, 2),
         content_map: JSON.stringify(contentMap, null, 2),
         description: description
       });
