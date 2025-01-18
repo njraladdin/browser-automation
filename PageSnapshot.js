@@ -352,10 +352,6 @@ class PageSnapshot {
     });
   }
 
-  
-
-
-
   getNearbyElementsText($el) {
     const nearbyElements = new Set();
 
@@ -692,6 +688,17 @@ class PageSnapshot {
           if (item.href) {
             result += ` (href: ${item.href})`;
           }
+        } else if (item.mediaType === 'video') {
+          // Special handling for video elements
+          const srcs = [];
+          if (item.src) srcs.push(`src: ${item.src}`);
+          if (item.sources) {
+            item.sources.forEach(source => {
+              srcs.push(`source: ${source.src}${source.type ? ` (${source.type})` : ''}`);
+            });
+          }
+          if (item.poster) srcs.push(`poster: ${item.poster}`);
+          result += ` ${srcs.join(' | ')}`;
         } else if (item.src) {
           result += ` src: ${item.src}${item.alt ? ` alt: ${item.alt}` : ''}`;
         } else {
@@ -701,9 +708,8 @@ class PageSnapshot {
         return result;
       })
       .filter(Boolean)
-      .join('\n---\n');
+      .join('\n');
   }
-
 
   async generatePageMaps(page) {
     const mapsStartTime = Date.now();
@@ -749,16 +755,15 @@ class PageSnapshot {
       return shortSelector;
     };
 
-    // Process elements - use root() instead of body to avoid html > body prefix
+    // Process elements
     $($.root()).children().find('*').addBack().each((_, element) => {
       const $el = $(element);
-      
+
       // Skip script and style elements early
       if (['script', 'style', 'noscript'].includes(element.tagName.toLowerCase())) {
         return;
       }
 
-      // Generate selector directly from the element
       const elementSelector = this.generateSelector($el);
       const selector = processSelector(elementSelector);
 
@@ -806,6 +811,9 @@ class PageSnapshot {
         }
       }
 
+      const elementUniqueId = this.getElementUniqueId($el);
+      const nearbyText = this.getNearbyElementsText($el);
+
       // Process for content map
       const directText = $el.clone().children().remove().end().text().trim();
       if (directText) {
@@ -814,6 +822,8 @@ class PageSnapshot {
           content: directText,
           tag: element.tagName.toLowerCase(),
           selector: selector,
+          nearbyText,
+          uniqueId: elementUniqueId,
           ...(element.tagName.toLowerCase() === 'a' && { href: $el.attr('href') })
         });
       }
@@ -824,16 +834,34 @@ class PageSnapshot {
           mediaType: 'image',
           src: $el.attr('src'),
           alt: $el.attr('alt'),
-          selector: selector
+          selector: selector,
+          nearbyText,
+          uniqueId: elementUniqueId
         });
       } else if (element.tagName.toLowerCase() === 'video') {
-        content.push({
-          type: 'media',
-          mediaType: 'video',
-          src: $el.attr('src'),
-          poster: $el.attr('poster'),
-          selector: selector
-        });
+        // Check for source elements within video
+        const sources = $el.find('source').map((_, sourceEl) => {
+          return {
+            src: $(sourceEl).attr('src'),
+            type: $(sourceEl).attr('type')
+          };
+        }).get();
+
+        const src = $el.attr('src');
+        const poster = $el.attr('poster');
+        
+        // Use src if available, otherwise use poster
+        if (src || poster) {
+          content.push({
+            type: 'media',
+            mediaType: 'video',
+            src: src || poster, // Use src if exists, fallback to poster
+            sources: sources.length > 0 ? sources : undefined,
+            selector: selector,
+            nearbyText,
+            uniqueId: this.getElementUniqueId($el)
+          });
+        }
       }
     });
 
@@ -930,6 +958,122 @@ class PageSnapshot {
     this.latestDOMChanges = [];
     console.log(`Cleared ${clearedCount} DOM changes`);
   }
+
+  async getNewContentMapItems(page) {
+    try {
+      // Store current content
+      const currentContent = this.snapshot.content;
+
+      // Take a new snapshot using current instance
+      await this.captureSnapshot(page);
+      const newContent = this.getContentMap();
+      
+      // Create a set of existing content signatures for faster lookup
+      const existingContentSignatures = new Set(
+        // Include only items from the last portion of current content for overlap
+        currentContent.slice(-20).map(item => this.getContentSignature(item))
+      );
+      
+      // Filter out items that exist in the overlap region
+      const newItems = newContent.filter(item => 
+        !existingContentSignatures.has(this.getContentSignature(item))
+      );
+
+      // Save new items to file if there are any
+      if (newItems.length > 0) {
+        const testDir = path.join(__dirname, 'test');
+        if (!fs.existsSync(testDir)) {
+          fs.mkdirSync(testDir);
+        }
+
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const filePath = path.join(testDir, `new_content_${timestamp}.json`);
+        
+        fs.writeFileSync(
+          filePath,
+          JSON.stringify(newItems, null, 2),
+          'utf8'
+        );
+
+        console.log(`Found ${newItems.length} new content items`);
+        console.log(`Saved new content to: ${filePath}`);
+      }
+      
+      return newItems;
+    } catch (error) {
+      console.error('Error in getNewContentMapItems:', error);
+      return [];
+    }
+  }
+
+  getContentSignature(item) {
+    // Only use the uniqueId for comparison - if two elements have different paths,
+    // they should be considered different elements even if content is the same
+    return item.uniqueId;
+  }
+
+  getElementUniqueId($el) {
+    const parts = [];
+    
+    // Get element's own info
+    const tag = $el.prop('tagName')?.toLowerCase();
+    const ownText = $el.clone().children().remove().end().text().trim();
+    const attributes = $el.get(0)?.attribs || {};
+    
+    // Add basic element info
+    parts.push(`tag:${tag}`);
+    if (ownText) parts.push(`text:${ownText}`);
+    Object.entries(attributes).forEach(([key, value]) => {
+      if (value && value.trim()) {
+        parts.push(`${key}:${value.trim()}`);
+      }
+    });
+
+    // Special handling for video elements
+    if (tag === 'video') {
+      // Add source elements info
+      $el.find('source').each((index, sourceEl) => {
+        const $source = this.$(sourceEl);
+        const src = $source.attr('src');
+        const type = $source.attr('type');
+        if (src) parts.push(`source${index}:${src}`);
+        if (type) parts.push(`sourceType${index}:${type}`);
+      });
+      
+      // Add poster if present
+      const poster = $el.attr('poster');
+      if (poster) parts.push(`poster:${poster}`);
+      
+      // Add parent's content or id to differentiate between similar videos
+      const $parent = $el.parent();
+      const parentId = $parent.attr('id');
+      const parentContent = $parent.clone().children().remove().end().text().trim();
+      if (parentId) parts.push(`parentId:${parentId}`);
+      if (parentContent) parts.push(`parentContent:${parentContent}`);
+    }
+
+    // Add index in parent for structural context
+    const index = $el.parent().children().index($el);
+    parts.push(`index:${index}`);
+
+    // Add immediate siblings text
+    const prevText = $el.prev().text().trim();
+    const nextText = $el.next().text().trim();
+    if (prevText) parts.push(`prev:${prevText.substring(0, 50)}`);
+    if (nextText) parts.push(`next:${nextText.substring(0, 50)}`);
+
+    // Add children text
+    $el.children().slice(0, 2).each((index, child) => {
+      const childText = this.$(child).text().trim();
+      if (childText) {
+        parts.push(`child${index+1}:${childText.substring(0, 50)}`);
+      }
+    });
+
+    // Create a hash of all parts
+    const fullString = parts.join('||');
+    return require('crypto').createHash('md5').update(fullString).digest('hex');
+  }
 }
 
 module.exports = PageSnapshot;
@@ -941,7 +1085,7 @@ if (require.main === module) {
   (async () => {
     let browser;
     try {
-      const url = 'https://www.airbnb.com';
+      const url = 'https://twitter.com/elonmusk';
       console.log(`Testing PageSnapshot with URL: ${url}`);
 
       console.log('Launching browser...');
@@ -964,12 +1108,32 @@ if (require.main === module) {
       console.log('\nSnapshot captured successfully!');
       console.log('Files saved with timestamp:', result.timestamp);
       
+      // Set up periodic content checking
+      console.log('\nStarting periodic content check...');
+      const checkInterval = setInterval(async () => {
+        try {
+          console.log('\nChecking for new content...');
+          const newItems = await snapshot.getNewContentMapItems(page);
+          console.log(`Found ${newItems.length} new items at ${new Date().toISOString()}`);
+        } catch (error) {
+          console.error('Error during content check:', error);
+          clearInterval(checkInterval);
+        }
+      }, 10000); // Check every 10 seconds
+
+      // Allow manual termination with Ctrl+C
+      process.on('SIGINT', () => {
+        console.log('\nStopping content check...');
+        clearInterval(checkInterval);
+        if (browser) {
+          browser.close();
+        }
+        process.exit(0);
+      });
    
     } catch (error) {
       console.error('Test failed:', error);
       process.exit(1);
-    } finally {
-     
     }
   })();
 } 

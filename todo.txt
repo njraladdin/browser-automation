@@ -56,8 +56,7 @@ implement  code generation, done
 fix shadow dom selectors, done 
 reset when browser is closed, done 
 simplfy step state and emitting status (after start : running, after : succes or error). socket messgae only emit message, don't affect colors or state, done 
-
-close browser when websocket connection for that flow is closed
+close browser when websocket connection for that flow is closed, done 
 
 
 run each benchmark, troubleshoot and improve :
@@ -85,10 +84,9 @@ run each benchmark, troubleshoot and improve :
 
 
 - go to twitter profile, and extract list of posts until you get 100
-    Problem: we did not get every single tweet accurately, and udnerstanding retweets
+    Problem: we did not get every single tweet, and some do not contain all details
     Solution: 
-        condensed content map might be confusing / try another AI 
-
+        use flash instead of flash-8b + compare preivous ocntnet map vs newer content map to get new content instead of dom monitoring 
 
 
 benchmarks: 

@@ -282,9 +282,9 @@ ${step.code}${extractedDataSummary}`;
       
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash-8b",
+        model: "gemini-1.5-flash",
         generationConfig: {
-          temperature: 0.7,
+          temperature: 0.5,
           topP: 0.95,
           topK: 40,
           maxOutputTokens: 8192,
@@ -296,27 +296,19 @@ ${step.code}${extractedDataSummary}`;
       let contentToProcess;
       if (options.extractFromNewlyAddedContent) {
         console.log(clc.cyan('▶ Extracting from newly added content...'));
-        const latestChanges = this.pageSnapshot.getLatestDOMChanges();
+        const newItems = await this.pageSnapshot.getNewContentMapItems(this.page);
         
-        if (!latestChanges || latestChanges.length === 0) {
-          console.log(clc.yellow('⚠ No new content found in DOM changes'));
+        if (!newItems || newItems.length === 0) {
+          console.log(clc.yellow('⚠ No new content found'));
           return { items: [] };
         }
 
-        contentToProcess = latestChanges
-          .filter(change => change.addedNodes?.length > 0 || change.contentMap)
-          .map(change => {
-            const contentMap = change.contentMap || 
-              this.pageSnapshot.createContentMapFromNodes(change.addedNodes);
-            return PageSnapshot.condenseContentMap(contentMap, false);
-          })
-          .filter(Boolean)
-          .join('\n---\n');
+        contentToProcess = PageSnapshot.condenseContentMap(newItems, false);
+
       } else {
         console.log(clc.cyan('▶ Extracting from current page content...'));
         contentToProcess = PageSnapshot.condenseContentMap(this.pageSnapshot.getContentMap(), false);
       }
-
 
       const systemPrompt = await this.loadPrompt('extract_structured_content', {
         content: contentToProcess,

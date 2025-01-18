@@ -4,11 +4,12 @@ Input Content from Webpage:
 {{content}}
 
 The content is formatted as:
-- Each entry starts with [tag_name] indicating the HTML element type
+- Each element starts with [tag_name] indicating the HTML element type
 - If present, aria-label is included in the tag brackets
 - Text content follows directly after the tag
 - Media entries include src: and optional alt: attributes
-- Entries are separated by ---
+- Elements are separated by ---, but different elements can be part of the same entry
+- the content provivided is not just the information we want, but also mixed up with all other content on the page, so make sure to extract only the information we want
 
 Instructions for Parsing:
 {{structure_prompt}}
@@ -59,3 +60,4 @@ Important:
 - Keep data well-structured and organized
 - We need to extract as much relevant data as possible
 - Use the structured content map to accurately identify and extract information 
+- filter out unrelevant stuff, but make sure you don't remove any relevant information. there should be a clear pattern to how the data is structured in the provided content

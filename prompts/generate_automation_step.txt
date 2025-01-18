@@ -110,7 +110,7 @@ Description Examples:
 === INFINITE SCROLL HANDLING ===
 OVERVIEW:
 • Use extractStructuredContentUsingAI with extractFromNewlyAddedContent option
-• Implement gradual scrolling and adequate waiting times
+• Implement smooth scrolling in chunks
 • Track and verify new content loading
 
 Example implementation:
@@ -122,21 +122,27 @@ try {
   const initialData = await extractStructuredContentUsingAI('Extract all product listings with their details');
   if (initialData.items) {
     allItems = [...initialData.items];
-    console.log(\`Extracted \${allItems.length} initial items\`);
+    console.log(`Extracted ${allItems.length} initial items`);
   }
   
   // Scroll and extract 3 more times
   for (let i = 0; i < 3; i++) {
-    console.log(\`Scrolling for page \${i + 2}...\`);
+    console.log(`Starting scroll sequence ${i + 2}...`);
     
-    // Scroll 2x viewport heights to ensure triggering infinite load
-    await page.evaluate(() => {
-      window.scrollBy(0, window.innerHeight * 2);
-    });
+    // Scroll in 4 smooth chunks
+    for (let j = 0; j < 4; j++) {
+      await page.evaluate(() => {
+        window.scrollBy({
+          top: window.innerHeight / 2,
+          behavior: 'smooth'
+        });
+      });
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
     
-    // Wait for content to load (dynamic content usually needs more time)
+    // Wait for content to load
     console.log('Waiting for new content to load...');
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    await new Promise(resolve => setTimeout(resolve, 2000));
     
     // Extract only newly loaded content
     const newData = await extractStructuredContentUsingAI(
@@ -146,7 +152,7 @@ try {
     
     if (newData.items && newData.items.length > 0) {
       allItems = [...allItems, ...newData.items];
-      console.log(\`Added \${newData.items.length} new items. Total: \${allItems.length}\`);
+      console.log(`Added ${newData.items.length} new items. Total: ${allItems.length}`);
     } else {
       console.log('No new items found, breaking scroll loop');
       break;
