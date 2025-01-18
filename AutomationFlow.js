@@ -184,8 +184,8 @@ ${step.code}${extractedDataSummary}`;
 
       const systemPrompt = await this.loadPrompt('generate_automation_step', {
         url: snapshot.url,
-        interactive: JSON.stringify(snapshot.interactive, null, 2),
-        content: PageSnapshot.condenseContentMap(snapshot.content),
+        interactive: this.pageSnapshot.cleanInteractiveMapForPrompt(snapshot.interactive, true),
+        content: this.pageSnapshot.cleanContentMapForPrompt(snapshot.content, true),
         previous_steps: previousSteps || 'No previous steps',
         instructions: instructions,
         step_index: this.automationSteps.length
@@ -299,16 +299,15 @@ ${step.code}${extractedDataSummary}`;
         const newItems = await this.pageSnapshot.getNewMapItems(this.page);
         const newContentItems = newItems.content;
         
-        if (!newContentItems || newContentItems.length === 0) {
+        if (!newContentItems?.length) {
           console.log(clc.yellow('⚠ No new content found'));
           return { items: [] };
         }
 
-        contentToProcess = PageSnapshot.condenseContentMap(newContentItems, false);
-
+        contentToProcess = this.pageSnapshot.cleanContentMapForPrompt(newContentItems, true);
       } else {
         console.log(clc.cyan('▶ Extracting from current page content...'));
-        contentToProcess = PageSnapshot.condenseContentMap(this.pageSnapshot.getContentMap(), false);
+        contentToProcess = this.pageSnapshot.cleanContentMapForPrompt(this.pageSnapshot.snapshot.content, true);
       }
 
       const systemPrompt = await this.loadPrompt('extract_structured_content', {
@@ -500,19 +499,18 @@ ${step.code}${extractedDataSummary}`;
       // Take a snapshot and get new items
       const newItems = await this.pageSnapshot.getNewMapItems(this.page);
       
-      if (!newItems.content.length && !Object.values(newItems.interactive).flat().length) {
+      if (!newItems.content.length && !newItems.interactive.length) {
         console.log(clc.red('✗ No new elements found'));
         throw new Error('No new elements found');
       }
 
       // Process content maps
       const contentChanges = newItems.content.length > 0 ? 
-        PageSnapshot.condenseContentMap(newItems.content) : '';
+        this.pageSnapshot.cleanContentMapForPrompt(newItems.content, true) : '';
 
       // Process interactive maps
-      const interactiveChanges = Object.values(newItems.interactive).flat().length > 0 ? 
-        JSON.stringify(newItems.interactive, null, 2) : '';
-
+      const interactiveChanges = newItems.interactive.length > 0 ?
+        JSON.stringify(this.pageSnapshot.cleanInteractiveMapForPrompt(newItems.interactive), null, 2) : '';
 
 
       const systemPrompt = await this.loadPrompt('find_dynamic_selector', {
@@ -620,7 +618,7 @@ ${step.code}${extractedDataSummary}`;
       // Get new items instead of using DOM changes
       const newItems = await this.pageSnapshot.getNewMapItems(this.page);
       
-      if (!newItems.content.length && !Object.values(newItems.interactive).flat().length) {
+      if (!newItems.content.length && !newItems.interactive.length) {
         console.log(clc.red('✗ No new elements found'));
         throw new Error('No new elements found');
       }
@@ -629,9 +627,9 @@ ${step.code}${extractedDataSummary}`;
       const contentMap = this.pageSnapshot.getContentMap();
 
       const systemPrompt = await this.loadPrompt('generate_next_action', {
-        new_content: JSON.stringify(newItems.content, null, 2),
-        new_interactive: JSON.stringify(newItems.interactive, null, 2),
-        content_map: JSON.stringify(contentMap, null, 2),
+        new_content: this.pageSnapshot.cleanContentMapForPrompt(newItems.content, false, true),
+        new_interactive: this.pageSnapshot.cleanInteractiveMapForPrompt(newItems.interactive, true),
+        content_map: this.pageSnapshot.cleanContentMapForPrompt(contentMap, false, true),
         description: description
       });
 

@@ -304,12 +304,6 @@ class PageSnapshot {
     const htmlContent = await Promise.resolve(this.snapshot.html);
     const interactiveContent = await Promise.resolve(this.snapshot.interactive);
 
-    // Create a copy of interactive content with both selectors
-    const interactiveWithSelectors = interactiveContent.map(item => ({
-      ...item,
-      originalSelector: this.selectorToOriginalMap.get(item.selector)
-    }));
-    
     fs.writeFileSync(
       path.join(testDir, `page_${timestamp}.html`),
       htmlContent,
@@ -318,19 +312,13 @@ class PageSnapshot {
 
     fs.writeFileSync(
       path.join(testDir, `interactive_${timestamp}.json`),
-      JSON.stringify(interactiveWithSelectors, null, 2),
+      JSON.stringify(interactiveContent, null, 2),
       'utf8'
     );
 
-    // Create a copy of content map with both selectors
-    const contentWithSelectors = this.snapshot.content.map(item => ({
-      ...item,
-      originalSelector: this.selectorToOriginalMap.get(item.selector) || item.selector
-    }));
-
     fs.writeFileSync(
       path.join(testDir, `content_${timestamp}.json`),
-      JSON.stringify(contentWithSelectors, null, 2),
+      JSON.stringify(this.snapshot.content, null, 2),
       'utf8'
     );
 
@@ -421,17 +409,19 @@ class PageSnapshot {
         
         // Helper function to get clean HTML content
         function getCleanHTML(element) {
-          // Skip if not an element
           if (element.nodeType !== 1) return element.textContent;
           
-          // Create a temporary container
           const container = document.createElement('div');
           container.appendChild(element.cloneNode(true));
-          
-          // Remove all style/script elements
-          const styles = container.getElementsByTagName('style');
-          const scripts = container.getElementsByTagName('script');
-          [...styles, ...scripts].forEach(el => el.remove());
+            // Remove all style/script elements
+            const styles = container.getElementsByTagName('style');
+            const scripts = container.getElementsByTagName('script');
+            [...styles, ...scripts].forEach(el => el.remove());
+          // Remove all style/script elements and style attributes
+          const elements = container.getElementsByTagName('*');
+          for (let el of elements) {
+              el.removeAttribute('style');
+          }
           
           return container.innerHTML;
         }
@@ -559,7 +549,7 @@ class PageSnapshot {
                     isDocument: false
                   });
 
-                  const { interactive, content } = this._generateMapsFromCheerio($, null, null, baseSelector, html);
+                  const { interactive, content } = this._generateMapsFromCheerio($, null, null, baseSelector);
 
                   // Debug log before adding items
                   // console.log('Processing DOM change:', {
@@ -726,208 +716,234 @@ class PageSnapshot {
     return maps;
   }
 
-  _generateMapsFromCheerio($, shadowDOM = null, iframeData = null, baseSelector = '', html = '') {
+  _generateMapsFromCheerio($, shadowDOM = null, iframeData = null, baseSelector = '') {
     const interactive = [];
     const content = [];
 
     // Helper function to process selector
     const processSelector = (originalSelector) => {
-      let finalSelector = originalSelector;
-      if (baseSelector) {
-        finalSelector = `${baseSelector} > ${originalSelector}`;
-      }
+        let finalSelector = originalSelector;
+        if (baseSelector) {
+            finalSelector = `${baseSelector} > ${originalSelector}`;
+        }
 
-      if (finalSelector.length <= 10) {
-        return finalSelector;
-      }
-      const shortSelector = `__SELECTOR__${++this.selectorCounter}`;
-      this.selectorToOriginalMap.set(shortSelector, finalSelector);
-      return shortSelector;
+        if (finalSelector.length <= 10) {
+            return { selector: finalSelector, originalSelector: finalSelector };
+        }
+        const shortSelector = `__SELECTOR__${++this.selectorCounter}`;
+        this.selectorToOriginalMap.set(shortSelector, finalSelector);
+        return { selector: shortSelector, originalSelector: finalSelector };
     };
 
     // Process elements
+    $($.root()).find('*').removeAttr('style');  // Remove all style attributes at the start
     $($.root()).children().find('*').addBack().each((_, element) => {
-      const $el = $(element);
+        const $el = $(element);
 
-      // Skip script and style elements early
-      if (['script', 'style', 'noscript'].includes(element.tagName.toLowerCase())) {
-        return;
-      }
-
-      const elementSelector = this.generateSelector($el);
-      const selector = processSelector(elementSelector);
-
-      // Process for interactive map
-      if ($el.is('input, textarea, select, [type="search"], [contenteditable="true"], faceplate-search-input, *[role="searchbox"], *[role="textbox"]')) {
-        interactive.push({
-          type: 'input',
-          inputType: $el.attr('type') || element.tagName.toLowerCase(),
-          selector: selector,
-          placeholder: $el.attr('placeholder'),
-          id: $el.attr('id'),
-          role: $el.attr('role'),
-          'aria-label': $el.attr('aria-label'),
-          value: $el.attr('value'),
-          name: $el.attr('name'),
-          label: this.findAssociatedLabel($el),
-          html: $el.clone().wrap('<div>').parent().html() // Get HTML for this specific element
-        });
-      }
-  // Get clean text content by removing style/script elements first
-      const getCleanText = ($elem) => {
-        const $clone = $elem.clone();
-        $clone.find('style, script').remove();
-        return $clone.text().trim();
-      };
-      if ($el.is('button, [role="button"]')) {
-        interactive.push({
-          type: 'button',
-          text: getCleanText($el),
-          selector: selector,
-          buttonType: $el.attr('type'),
-          id: $el.attr('id'),
-          role: $el.attr('role'),
-          'aria-label': $el.attr('aria-label'),
-          disabled: $el.prop('disabled'),
-          nearbyElementsText: this.getNearbyElementsText($el),
-          html: $el.clone().wrap('<div>').parent().html() // Get HTML for this specific element
-        });
-      }
-
-      if ($el.is('a')) {
-        const text = $el.text().trim();
-        const ariaLabel = $el.attr('aria-label');
-        
-        if (text || ariaLabel) {
-          interactive.push({
-            type: 'link',
-            text: text,
-            href: $el.attr('href'),
-            selector: selector,
-            id: $el.attr('id'),
-            role: $el.attr('role'),
-            'aria-label': ariaLabel,
-            html: $el.clone().wrap('<div>').parent().html() // Get HTML for this specific element
-          });
+        // Skip script and style elements early
+        if (['script', 'style', 'noscript'].includes(element.tagName.toLowerCase())) {
+            return;
         }
-      }
 
-      const nearbyText = this.getNearbyElementsText($el);
+        const elementSelector = this.generateSelector($el);
+        const { selector, originalSelector } = processSelector(elementSelector);
 
-      // Process for content map
-      const directText = $el.clone().children().remove().end().text().trim();
-      if (directText) {
-        content.push({
-          type: element.tagName.toLowerCase() === 'a' ? 'link' : 'text',
-          content: directText,
-          tag: element.tagName.toLowerCase(),
-          selector: selector,
-          nearbyText,
-          html: $el.clone().wrap('<div>').parent().html(), // Get HTML for this specific element
-          ...(element.tagName.toLowerCase() === 'a' && { href: $el.attr('href') })
-        });
-      }
+        // Process for interactive map
+        if ($el.is('input, textarea, select, [type="search"], [contenteditable="true"], faceplate-search-input, *[role="searchbox"], *[role="textbox"]')) {
+            const interactiveItem = {
+                type: 'input',
+                inputType: $el.attr('type') || element.tagName.toLowerCase(),
+                selector: selector,
+                originalSelector: originalSelector,
+                placeholder: $el.attr('placeholder'),
+                id: $el.attr('id'),
+                role: $el.attr('role'),
+                'aria-label': $el.attr('aria-label'),
+                value: $el.attr('value'),
+                name: $el.attr('name'),
+                label: this.findAssociatedLabel($el),
+                html: $el.clone().wrap('<div>').parent().html() // Get HTML for this specific element
+            };
 
-      if (element.tagName.toLowerCase() === 'img') {
-        const src = $el.attr('src');
-        if (src) {
-          content.push({
-            type: 'media',
-            mediaType: 'image',
-            src: src,
-            alt: $el.attr('alt'),
-            selector: selector,
-            nearbyText,
-            html: $el.clone().wrap('<div>').parent().html() // Get HTML for this specific element
-          });
+            // Add options array for select elements
+            if (element.tagName.toLowerCase() === 'select') {
+                interactiveItem.options = $el.find('option').map((_, option) => {
+                    const $option = $(option);
+                    return {
+                        value: $option.attr('value'),
+                        text: $option.text().trim(),
+                        selected: $option.attr('selected') !== undefined
+                    };
+                }).get();
+            }
+
+            interactive.push(interactiveItem);
         }
-      } else if (element.tagName.toLowerCase() === 'video') {
-        // Check for source elements within video
-        const sources = $el.find('source').map((_, sourceEl) => {
-          return {
-            src: $(sourceEl).attr('src'),
-            type: $(sourceEl).attr('type')
-          };
-        }).get();
 
-        const src = $el.attr('src');
-        const poster = $el.attr('poster');
-        
-        // Use src if available, otherwise use poster
-        if (src || poster) {
-          content.push({
-            type: 'media',
-            mediaType: 'video',
-            src: src || poster,
-            sources: sources.length > 0 ? sources : undefined,
-            selector: selector,
-            nearbyText,
-            html: $el.clone().wrap('<div>').parent().html() // Get HTML for this specific element
-          });
+        // Get clean text content by removing style/script elements first
+        const getCleanText = ($elem) => {
+            const $clone = $elem.clone();
+            $clone.find('style, script').remove();
+            return $clone.text().trim();
+        };
+        if ($el.is('button, [role="button"]')) {
+            interactive.push({
+                type: 'button',
+                text: getCleanText($el),
+                selector: selector,
+                originalSelector: originalSelector,
+                buttonType: $el.attr('type'),
+                id: $el.attr('id'),
+                role: $el.attr('role'),
+                'aria-label': $el.attr('aria-label'),
+                disabled: $el.prop('disabled'),
+                nearbyElementsText: this.getNearbyElementsText($el),
+                html: $el.clone().wrap('<div>').parent().html() // Get HTML for this specific element
+            });
         }
-      }
+
+        if ($el.is('a')) {
+            const text = $el.text().trim();
+            const ariaLabel = $el.attr('aria-label');
+            
+            if (text || ariaLabel) {
+                interactive.push({
+                    type: 'link',
+                    text: text,
+                    selector: selector,
+                    originalSelector: originalSelector,
+                    href: $el.attr('href'),
+                    id: $el.attr('id'),
+                    role: $el.attr('role'),
+                    'aria-label': ariaLabel,
+                    html: $el.clone().wrap('<div>').parent().html() // Get HTML for this specific element
+                });
+            }
+        }
+
+        const nearbyText = this.getNearbyElementsText($el);
+
+        // Process for content map
+        const directText = $el.clone().children().remove().end().text().trim();
+        if (directText) {
+            content.push({
+                type: element.tagName.toLowerCase() === 'a' ? 'link' : 'text',
+                content: directText,
+                tag: element.tagName.toLowerCase(),
+                selector: selector,
+                originalSelector: originalSelector,
+                nearbyText,
+                html: $el.clone().wrap('<div>').parent().html(), // Get HTML for this specific element
+                ...(element.tagName.toLowerCase() === 'a' && { href: $el.attr('href') })
+            });
+        }
+
+        if (element.tagName.toLowerCase() === 'img') {
+            const src = $el.attr('src');
+            if (src) {
+                content.push({
+                    type: 'media',
+                    mediaType: 'image',
+                    src: src,
+                    selector: selector,
+                    originalSelector: originalSelector,
+                    alt: $el.attr('alt'),
+                    nearbyText,
+                    html: $el.clone().wrap('<div>').parent().html() // Get HTML for this specific element
+                });
+            }
+        } else if (element.tagName.toLowerCase() === 'video') {
+            // Check for source elements within video
+            const sources = $el.find('source').map((_, sourceEl) => {
+                return {
+                    src: $(sourceEl).attr('src'),
+                    type: $(sourceEl).attr('type')
+                };
+            }).get();
+
+            const src = $el.attr('src');
+            const poster = $el.attr('poster');
+            
+            // Use src if available, otherwise use poster
+            if (src || poster) {
+                const $clone = $el.clone();
+                $clone.find('*').removeAttr('style'); // Remove style from element and all children
+                const cleanHtml = $clone.wrap('<div>').parent().html();
+
+                content.push({
+                    type: 'media',
+                    mediaType: 'video',
+                    src: src || poster,
+                    selector: selector,
+                    originalSelector: originalSelector,
+                    sources: sources.length > 0 ? sources : undefined,
+                    nearbyText,
+                    html: cleanHtml // Use cleaned HTML without styles
+                });
+            }
+        }
     });
 
     // Process shadow DOM
     if (shadowDOM) {
-      shadowDOM.forEach((shadowTree) => {
-        const $shadow = cheerio.load(shadowTree.content);
-        const shadowMaps = this._generateMapsFromCheerio($shadow, null, null);
-        
-        // Process interactive elements
-        Object.keys(shadowMaps.interactive).forEach(key => {
-          shadowMaps.interactive[key].forEach(item => {
-            const { selector, ...rest } = item;
+        shadowDOM.forEach((shadowTree) => {
+            const $shadow = cheerio.load(shadowTree.content);
+            const shadowMaps = this._generateMapsFromCheerio($shadow, null, null);
             
-            if (shadowTree.shadowTrees?.some(tree => 
-              tree.hostElement.tagName.toLowerCase() === item.tag?.toLowerCase()
-            )) {
-              return;
-            }
+            // Process interactive elements
+            Object.keys(shadowMaps.interactive).forEach(key => {
+                shadowMaps.interactive[key].forEach(item => {
+                    const { selector, ...rest } = item;
+                    
+                    if (shadowTree.shadowTrees?.some(tree => 
+                        tree.hostElement.tagName.toLowerCase() === item.tag?.toLowerCase()
+                    )) {
+                        return;
+                    }
 
-            interactive[key].push({
-              ...rest,
-              hostSelector: shadowTree.hostElement.tagName,
-              shadowPath: [this.cleanShadowSelector(item.selector)]
-            });
-          });
-        });
-
-        // Process nested shadow DOMs
-        if (shadowTree.shadowTrees) {
-          shadowTree.shadowTrees.forEach(nestedShadow => {
-            const $nestedShadow = cheerio.load(nestedShadow.content);
-            const nestedMaps = this._generateMapsFromCheerio($nestedShadow, null, null);
-
-            Object.keys(nestedMaps.interactive).forEach(key => {
-              nestedMaps.interactive[key].forEach(item => {
-                const { selector, ...rest } = item;
-                interactive[key].push({
-                  ...rest,
-                  hostSelector: shadowTree.hostElement.tagName,
-                  shadowPath: [
-                    nestedShadow.hostElement.tagName,
-                    this.cleanShadowSelector(item.selector)
-                  ]
+                    interactive[key].push({
+                        ...rest,
+                        hostSelector: shadowTree.hostElement.tagName,
+                        shadowPath: [this.cleanShadowSelector(item.selector)]
+                    });
                 });
-              });
             });
-          });
-        }
-      });
+
+            // Process nested shadow DOMs
+            if (shadowTree.shadowTrees) {
+                shadowTree.shadowTrees.forEach(nestedShadow => {
+                    const $nestedShadow = cheerio.load(nestedShadow.content);
+                    const nestedMaps = this._generateMapsFromCheerio($nestedShadow, null, null);
+
+                    Object.keys(nestedMaps.interactive).forEach(key => {
+                        nestedMaps.interactive[key].forEach(item => {
+                            const { selector, ...rest } = item;
+                            interactive[key].push({
+                                ...rest,
+                                hostSelector: shadowTree.hostElement.tagName,
+                                shadowPath: [
+                                    nestedShadow.hostElement.tagName,
+                                    this.cleanShadowSelector(item.selector)
+                                ]
+                            });
+                        });
+                    });
+                });
+            }
+        });
     }
 
     // Process iframes
     if (iframeData) {
-      iframeData.forEach((iframe) => {
-        const $iframe = cheerio.load(iframe.content);
-        const iframeMaps = this._generateMapsFromCheerio($iframe, null, null, `iframe[src="${iframe.src}"]`);
-        
-        Object.keys(iframeMaps.interactive).forEach(key => {
-          interactive[key].push(...iframeMaps.interactive[key]);
+        iframeData.forEach((iframe) => {
+            const $iframe = cheerio.load(iframe.content);
+            const iframeMaps = this._generateMapsFromCheerio($iframe, null, null, `iframe[src="${iframe.src}"]`);
+            
+            Object.keys(iframeMaps.interactive).forEach(key => {
+                interactive[key].push(...iframeMaps.interactive[key]);
+            });
+            content.push(...iframeMaps.content);
         });
-        content.push(...iframeMaps.content);
-      });
     }
     
     return { interactive, content };
@@ -982,20 +998,11 @@ class PageSnapshot {
       const newItems = {
         content: newContent.filter(item => {
           const isNew = changedContentHtml.has(item.html);
-          // if (isNew) console.log('Found new content item:', {
-          //   type: item.type,
-          //   content: item.content || item.text,
-          //   html: item.html.substring(0, 100) + '...' // Log truncated HTML for debugging
-          // });
+
           return isNew;
         }),
         interactive: newInteractive.filter(item => {
           const isNew = changedInteractiveHtml.has(item.html);
-          // if (isNew) console.log('Found new interactive item:', {
-          //   type: item.type,
-          //   text: item.text || item['aria-label'],
-          //   html: item.html.substring(0, 100) + '...' // Log truncated HTML for debugging
-          // });
           return isNew;
         })
       };
@@ -1044,6 +1051,19 @@ class PageSnapshot {
       fs.writeFileSync(interactivePath, JSON.stringify(newItems.interactive, null, 2), 'utf8');
       console.log(`Saved ${newItems.interactive.length} new interactive items to: ${interactivePath}`);
     }
+  }
+
+  cleanContentMapForPrompt(contentMap, condensed = false, stringify = false) {
+    if (!contentMap) return condensed ? '' : [];
+    const cleanedMap = contentMap.map(({ originalSelector, html, ...item }) => item);
+    const result = condensed ? PageSnapshot.condenseContentMap(cleanedMap) : cleanedMap;
+    return stringify ? JSON.stringify(result, null, 2) : result;
+  }
+
+  cleanInteractiveMapForPrompt(interactiveMap, stringify = false) {
+    if (!interactiveMap) return [];
+    const result = interactiveMap.map(({ originalSelector, html, ...item }) => item);
+    return stringify ? JSON.stringify(result, null, 2) : result;
   }
 }
 

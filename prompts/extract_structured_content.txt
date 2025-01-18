@@ -61,3 +61,5 @@ Important:
 - We need to extract as much relevant data as possible
 - Use the structured content map to accurately identify and extract information 
 - filter out unrelevant stuff, but make sure you don't remove any relevant information. there should be a clear pattern to how the data is structured in the provided content
+
+for media elements, you can be provided the src, which can be either image or video. you can tell which is which using the extension or url structure or hints in the url, for example this is a video: source: blob:https://x.com/12d5e171-3940-43f0-bbf5-c1de5d225669 (video/mp4)
