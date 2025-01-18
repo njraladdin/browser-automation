@@ -59,6 +59,10 @@ simplfy step state and emitting status (after start : running, after : succes or
 close browser when websocket connection for that flow is closed, done 
 
 
+make detect dom change work properly and without duplicates (already kinda working). 
+make getting new content and interactive map work properly  (use selector to cehck for elements from dom change, make sure to replace them first). make sure elements fropm dom change when creating map, don't get their selectors shortened over nad over
+
+
 run each benchmark, troubleshoot and improve :
 - go to anonymiosu instagram stories, open each story modal and get all stories posts :
     Problem: buttons do not have text, and AI is choosing wrong button selector to submit search, DONE 

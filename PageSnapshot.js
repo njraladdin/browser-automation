@@ -15,7 +15,6 @@ class PageSnapshot {
       content: null,
       timestamp: null
     };
-    this.latestDOMChanges = [];
     this.observer = null;
     this.processedElements = new Set();
 
@@ -26,9 +25,6 @@ class PageSnapshot {
   async captureSnapshot(page) {
     const snapshotStartTime = Date.now();
     try {
-      // Reset latest changes at the start of a new capture
-      this.latestDOMChanges = [];
-
       // Then ensure DOM is ready (important for SPAs and dynamic content)
       await page.waitForFunction(
         () => document.readyState === 'complete',
@@ -665,9 +661,6 @@ class PageSnapshot {
     }
   }
 
-  getLatestDOMChanges() {
-    return this.latestDOMChanges;
-  }
 
 
   // Change from instance method to static method that accepts content
@@ -744,7 +737,7 @@ class PageSnapshot {
         finalSelector = `${baseSelector} > ${originalSelector}`;
       }
 
-      if (finalSelector.length <= 300) {
+      if (finalSelector.length <= 10) {
         return finalSelector;
       }
       const shortSelector = `__SELECTOR__${++this.selectorCounter}`;
@@ -832,14 +825,17 @@ class PageSnapshot {
       }
 
       if (element.tagName.toLowerCase() === 'img') {
-        content.push({
-          type: 'media',
-          mediaType: 'image',
-          src: $el.attr('src'),
-          alt: $el.attr('alt'),
-          selector: selector,
-          nearbyText
-        });
+        const src = $el.attr('src');
+        if (src) {
+          content.push({
+            type: 'media',
+            mediaType: 'image',
+            src: src,
+            alt: $el.attr('alt'),
+            selector: selector,
+            nearbyText
+          });
+        }
       } else if (element.tagName.toLowerCase() === 'video') {
         // Check for source elements within video
         const sources = $el.find('source').map((_, sourceEl) => {
@@ -953,12 +949,7 @@ class PageSnapshot {
     });
   }
 
-  clearLatestDOMChanges() {
-    console.log('Clearing latest DOM changes...');
-    const clearedCount = this.latestDOMChanges.length;
-    this.latestDOMChanges = [];
-    console.log(`Cleared ${clearedCount} DOM changes`);
-  }
+
 
   async getNewMapItems(page) {
     try {
@@ -1085,8 +1076,8 @@ if (require.main === module) {
   (async () => {
     let browser;
     try {
-      const url = 'https://google.com';
-      // const url = 'https://twitter.com/elonmusk';
+      //const url = 'https://google.com';
+       const url = 'https://twitter.com/elonmusk';
       console.log(`Testing PageSnapshot with URL: ${url}`);
 
       console.log('Launching browser...');
