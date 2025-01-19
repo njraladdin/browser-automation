@@ -57,11 +57,11 @@ fix shadow dom selectors, done
 reset when browser is closed, done 
 simplfy step state and emitting status (after start : running, after : succes or error). socket messgae only emit message, don't affect colors or state, done 
 close browser when websocket connection for that flow is closed, done 
+make getting new content and interactive map work properly, done 
+fix selecti nputs, add all options, done 
 
 
-make detect dom change work properly and without duplicates (already kinda working). 
-make getting new content and interactive map work properly  (use selector to cehck for elements from dom change, make sure to replace them first). make sure elements fropm dom change when creating map, don't get their selectors shortened over nad over
-fix selecti nputs, add all options
+fix browser intiilizing status messazges not working 
 
 run each benchmark, troubleshoot and improve :
 - go to anonymiosu instagram stories, open each story modal and get all stories posts :
@@ -88,16 +88,15 @@ run each benchmark, troubleshoot and improve :
 
 
 - go to twitter profile, and extract list of posts until you get 100
-    Problem: we did not get every single tweet, and some do not contain all details
+    Problem: we did not get every single tweet, and some do not contain all detail, DONE
     Solution: 
-        use flash instead of flash-8b + compare preivous ocntnet map vs newer content map to get new content instead of dom monitoring 
+        use flash instead of flash-8b + compare preivous ocntnet map vs newer content map to get new content hybrid with dom monitoring 
 
 
 benchmarks: 
 - go to anonymiosu instagram stories, and scrape latest stories media, DONE 
-- go to airbnb, handle infinite scroll and extract 1000 listings details 
-- go to twitter profile, and extract list of posts until you get 100
-- go to airbnb, search a destination, then extract all data for each pagination page
+- go to airbnb, handle infinite scroll and extract 1000 listings details, DONE 
+- go to twitter profile, and extract list of posts until you get 100, DONE 
 - create a facebook account 
 
 

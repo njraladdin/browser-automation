@@ -23,7 +23,7 @@ class AutomationFlow {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  async initBrowser(statusEmitter = () => {}) {
+  async initBrowser(statusEmitter = () => {}, stepIndex = null) {
     if (this.browser && this.page) {
       return { browser: this.browser, page: this.page };
     }
@@ -34,7 +34,7 @@ class AutomationFlow {
 
     this.browserInitializing = (async () => {
       try {
-        statusEmitter({ message: 'Launching browser...' });
+        statusEmitter({ message: 'Launching browser...', stepIndex });
         console.log(clc.cyan('▶ Launching browser...'));
         this.browser = await puppeteer.launch({ 
           headless: false,
@@ -44,12 +44,12 @@ class AutomationFlow {
           }
         });
 
-        statusEmitter({ message: 'Browser launched successfully' });
+        statusEmitter({ message: 'Browser launched successfully', stepIndex });
 
         // Add handler for browser disconnection
         this.browser.on('disconnected', async () => {
           console.log(clc.yellow('⚠ Browser was disconnected or closed'));
-          statusEmitter({ message: 'Browser was disconnected or closed' });
+          statusEmitter({ message: 'Browser was disconnected or closed', stepIndex });
           this.browser = null;
           this.page = null;
           await this.resetExecution();
@@ -57,16 +57,16 @@ class AutomationFlow {
 
         this.page = await this.browser.newPage();
         
-        statusEmitter({ message: `Navigating to ${this.INITIAL_URL}...` });
+        statusEmitter({ message: `Navigating to ${this.INITIAL_URL}...`, stepIndex });
         console.log(clc.cyan('▶ Navigating to initial URL...'));
         try {
           await this.page.goto(this.INITIAL_URL, { waitUntil: 'networkidle0' });
           console.log(clc.green('✓ Page loaded successfully'));
-          statusEmitter({ message: 'Page loaded successfully' });
+          statusEmitter({ message: 'Page loaded successfully', stepIndex });
         } catch (navigationError) {
           if (navigationError.message.includes('detached') || navigationError.message.includes('disconnected')) {
             console.log(clc.yellow('⚠ Browser was closed during navigation'));
-            statusEmitter({ message: 'Browser was closed during navigation' });
+            statusEmitter({ message: 'Browser was closed during navigation', stepIndex });
             this.browser = null;
             this.page = null;
             await this.resetExecution();
@@ -78,7 +78,7 @@ class AutomationFlow {
         return { browser: this.browser, page: this.page };
       } catch (error) {
         console.log(clc.red('✗ Browser initialization failed:'), error.message);
-        statusEmitter({ message: `Browser initialization failed: ${error.message}` });
+        statusEmitter({ message: `Browser initialization failed: ${error.message}`, stepIndex });
         this.browser = null;
         this.page = null;
         await this.resetExecution();
@@ -125,7 +125,7 @@ class AutomationFlow {
       // Ensure browser is initialized
       if (!this.browser || !this.page) {
         console.log(clc.cyan('▶ Browser not initialized, initializing...'));
-        const { browser, page } = await this.initBrowser(statusEmitter);
+        const { browser, page } = await this.initBrowser(statusEmitter, stepIndex);
         this.browser = browser;
         this.page = page;
       }
