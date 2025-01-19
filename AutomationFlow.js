@@ -184,8 +184,14 @@ ${step.code}${extractedDataSummary}`;
 
       const systemPrompt = await this.loadPrompt('generate_automation_step', {
         url: snapshot.url,
-        interactive: this.pageSnapshot.cleanInteractiveMapForPrompt(snapshot.interactive, true),
-        content: this.pageSnapshot.cleanContentMapForPrompt(snapshot.content, true),
+        interactive: this.pageSnapshot.cleanInteractiveMapForPrompt({ 
+          interactiveMap: snapshot.interactive, 
+          stringify: true 
+        }),
+        content: this.pageSnapshot.cleanContentMapForPrompt({ 
+          contentMap: snapshot.content, 
+          condensed: true 
+        }),
         previous_steps: previousSteps || 'No previous steps',
         instructions: instructions,
         step_index: this.automationSteps.length
@@ -304,10 +310,18 @@ ${step.code}${extractedDataSummary}`;
           return { items: [] };
         }
 
-        contentToProcess = this.pageSnapshot.cleanContentMapForPrompt(newContentItems, true);
+        contentToProcess = this.pageSnapshot.cleanContentMapForPrompt({ 
+          contentMap: newContentItems, 
+          condensed: true ,
+          removeSelectors: true
+        });
       } else {
         console.log(clc.cyan('▶ Extracting from current page content...'));
-        contentToProcess = this.pageSnapshot.cleanContentMapForPrompt(this.pageSnapshot.snapshot.content, true);
+        contentToProcess = this.pageSnapshot.cleanContentMapForPrompt({ 
+          contentMap: this.pageSnapshot.snapshot.content, 
+          condensed: true ,
+          removeSelectors: true
+        });
       }
 
       const systemPrompt = await this.loadPrompt('extract_structured_content', {
@@ -506,11 +520,17 @@ ${step.code}${extractedDataSummary}`;
 
       // Process content maps
       const contentChanges = newItems.content.length > 0 ? 
-        this.pageSnapshot.cleanContentMapForPrompt(newItems.content, true) : '';
+        this.pageSnapshot.cleanContentMapForPrompt({ 
+          contentMap: newItems.content, 
+          condensed: true 
+        }) : '';
 
       // Process interactive maps
       const interactiveChanges = newItems.interactive.length > 0 ?
-        JSON.stringify(this.pageSnapshot.cleanInteractiveMapForPrompt(newItems.interactive), null, 2) : '';
+        this.pageSnapshot.cleanInteractiveMapForPrompt({ 
+          interactiveMap: newItems.interactive, 
+          stringify: true 
+        }) : '';
 
 
       const systemPrompt = await this.loadPrompt('find_dynamic_selector', {
@@ -627,9 +647,18 @@ ${step.code}${extractedDataSummary}`;
       const contentMap = this.pageSnapshot.getContentMap();
 
       const systemPrompt = await this.loadPrompt('generate_next_action', {
-        new_content: this.pageSnapshot.cleanContentMapForPrompt(newItems.content, false, true),
-        new_interactive: this.pageSnapshot.cleanInteractiveMapForPrompt(newItems.interactive, true),
-        content_map: this.pageSnapshot.cleanContentMapForPrompt(contentMap, false, true),
+        new_content: this.pageSnapshot.cleanContentMapForPrompt({ 
+          contentMap: newItems.content, 
+          stringify: true 
+        }),
+        new_interactive: this.pageSnapshot.cleanInteractiveMapForPrompt({ 
+          interactiveMap: newItems.interactive, 
+          stringify: true 
+        }),
+        content_map: this.pageSnapshot.cleanContentMapForPrompt({ 
+          contentMap: contentMap, 
+          stringify: true 
+        }),
         description: description
       });
 

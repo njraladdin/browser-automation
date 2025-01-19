@@ -1053,17 +1053,23 @@ class PageSnapshot {
     }
   }
 
-  cleanContentMapForPrompt(contentMap, condensed = false, stringify = false) {
+  cleanContentMapForPrompt({ contentMap, condensed = false, stringify = false, removeSelectors = false }) {
     if (!contentMap) return condensed ? '' : [];
-    const cleanedMap = contentMap.map(({ originalSelector, html, ...item }) => item);
-    const result = condensed ? PageSnapshot.condenseContentMap(cleanedMap) : cleanedMap;
+    // Clean the map - optionally remove selectors
+    const cleanedMap = contentMap.map(({ originalSelector, html, selector, ...rest }) => {
+      return removeSelectors ? rest : { selector, ...rest };
+    });
+    
+    const result = condensed ? PageSnapshot.condenseContentMap(cleanedMap, !removeSelectors) : cleanedMap;
     return stringify ? JSON.stringify(result, null, 2) : result;
   }
 
-  cleanInteractiveMapForPrompt(interactiveMap, stringify = false) {
+  cleanInteractiveMapForPrompt({ interactiveMap, stringify = false, removeSelectors = false }) {
     if (!interactiveMap) return [];
-    const result = interactiveMap.map(({ originalSelector, html, ...item }) => item);
-    return stringify ? JSON.stringify(result, null, 2) : result;
+    const cleanedMap = interactiveMap.map(({ originalSelector, html, selector, ...rest }) => {
+      return removeSelectors ? rest : { selector, ...rest };
+    });
+    return stringify ? JSON.stringify(cleanedMap, null, 2) : cleanedMap;
   }
 }
 
