@@ -105,8 +105,8 @@ class PageSnapshot {
 
       // Clean the page
       const cleanStartTime = Date.now();
-     // this.cleanPage();
-      this.snapshot.html = this.getCleanedHtml();
+
+      this.snapshot.html = this.$.root().html()
       console.log(`Page cleaning took ${Date.now() - cleanStartTime}ms`);
 
       // Replace separate map generations with single combined call
@@ -132,46 +132,6 @@ class PageSnapshot {
       console.error('Failed to capture snapshot:', error);
       throw error;
     }
-  }
-
-  // Get methods for accessing snapshot data
-  getUrl() { return this.snapshot.url; }
-  getHtml() { return this.snapshot.html; }
-  getInteractiveView() { return this.snapshot.interactive; }
-  getTimestamp() { return this.snapshot.timestamp; }
-  
-  cleanPage() {
-    // Remove unwanted elements
-    this.$('script').remove();
-    this.$('style').remove();
-    this.$('link[rel="stylesheet"]').remove();
-    this.$('meta').remove();
-    this.$('svg').remove();
-    
-    // Define whitelist of allowed attributes
-    const allowedAttributes = new Set([
-      'class', 'href', 'src', 'id', 'type', 'value', 'title',
-      'alt', 'name', 'placeholder', 'role', 'aria-label',
-      'target', 'rel', 'for', 'action', 'method'
-    ]);
-
-    // Clean all elements
-    this.$('*').each((i, el) => {
-      if (el.attribs) {
-        Object.keys(el.attribs).forEach(attr => {
-          if (!allowedAttributes.has(attr.toLowerCase())) {
-            this.$(el).removeAttr(attr);
-          }
-        });
-      }
-    });
-  }
-
-  getCleanedHtml() {
-    return this.$.root().html()
-      // .replace(/^\s*[\r\n]/gm, '')
-      // .replace(/\s+$/gm, '')
-      // .replace(/\n\s*\n\s*\n/g, '\n\n');
   }
 
   sanitizeSelector(selector) {
@@ -291,7 +251,6 @@ class PageSnapshot {
   }
 
   async saveDebugFiles() {
-    const startTime = Date.now();
     
     const testDir = path.join(__dirname, 'test');
     if (!fs.existsSync(testDir)) {
@@ -301,15 +260,8 @@ class PageSnapshot {
     const timestamp = this.snapshot.timestamp.replace(/[:.]/g, '-');
     
     // Ensure we have resolved HTML content
-    const htmlContent = await Promise.resolve(this.snapshot.html);
+
     const interactiveContent = await Promise.resolve(this.snapshot.interactive);
-
-    fs.writeFileSync(
-      path.join(testDir, `page_${timestamp}.html`),
-      htmlContent,
-      'utf8'
-    );
-
     fs.writeFileSync(
       path.join(testDir, `interactive_${timestamp}.json`),
       JSON.stringify(interactiveContent, null, 2),
@@ -551,32 +503,13 @@ class PageSnapshot {
 
                   const { interactive, content } = this._generateMapsFromCheerio($, null, null, baseSelector);
 
-                  // Debug log before adding items
-                  // console.log('Processing DOM change:', {
-                  //   baseSelector,
-                  //   foundInteractive: interactive.length,
-                  //   foundContent: content.length
-                  // });
-
                   if (content.length > 0 || interactive.length > 0) {
                     if (interactive.length > 0) {
                       this.latestDOMChangesForInteractiveElements.push(...interactive);
-                      // Debug log interactive items
-                      // fs.writeFileSync(
-                      //   path.join(__dirname, 'test', `debug_interactive_changes_${Date.now()}.json`),
-                      //   JSON.stringify(interactive, null, 2),
-                      //   'utf8'
-                      // );
                     }
 
                     if (content.length > 0) {
                       this.latestDOMChangesForContentElements.push(...content);
-                      // Debug log content items
-                      // fs.writeFileSync(
-                      //   path.join(__dirname, 'test', `debug_content_changes_${Date.now()}.json`),
-                      //   JSON.stringify(content, null, 2),
-                      //   'utf8'
-                      // );
                     }
                   }
                 }
@@ -611,49 +544,8 @@ class PageSnapshot {
     }
   }
 
-  async stopDOMObserver(page) {
-    try {
-      clearInterval(this.changeCollectionInterval);
-      
-      await page.evaluate(() => {
-        if (window.__domObserver) {
-          window.__domObserver.disconnect();
-          delete window.__domObserver;
-        }
-      });
-
-      console.log('DOM observer stopped');
-    } catch (error) {
-      console.error('Failed to stop DOM observer:', error);
-    }
-  }
-
-  async logChangesToFile(changes) {
-    try {
-      const testDir = path.join(__dirname, 'test');
-      if (!fs.existsSync(testDir)) {
-        fs.mkdirSync(testDir);
-      }
-
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const logPath = path.join(testDir, `dom_changes_${timestamp}.json`);
-
-      console.log(`Writing to ${logPath}`);
-      fs.writeFileSync(
-        logPath,
-        JSON.stringify(changes, null, 2),
-        'utf8'
-      );
-      console.log('File written successfully');
-    } catch (error) {
-      console.error('Failed to log DOM changes:', error);
-      console.error(error.stack);
-    }
-  }
 
 
-
-  // Change from instance method to static method that accepts content
   static condenseContentMap(content, includeSelectors = true) {
     if (!content) {
       return '';
@@ -697,7 +589,7 @@ class PageSnapshot {
       .join('\n');
   }
 
-  async generatePageMaps(page) {
+  async generatePageMaps() {
     const mapsStartTime = Date.now();
     const maps = await this._generateMapsFromCheerio(
       this.$, 
@@ -970,9 +862,6 @@ class PageSnapshot {
       id: attributes.id
     });
   }
-
-
-
   async getNewMapItems(page) {
     try {
       // Get new snapshot
