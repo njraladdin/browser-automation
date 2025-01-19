@@ -139,7 +139,7 @@ try {
     console.log(`Current items: ${allItems.length}. Target: ${targetItemCount}`);
     
     // Scroll smoothly
-    for (let j = 0; j < 2; j++) {
+    for (let j = 0; j < 4; j++) {
       await page.evaluate(() => {
         window.scrollBy({
           top: window.innerHeight,
