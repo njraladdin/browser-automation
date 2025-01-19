@@ -3,8 +3,17 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 
+// Custom CSS escape function since we're in Node.js environment
+function cssEscape(value) {
+    return value
+        .replace(/[!"#$%&'()*+,.\/:;<=>?@[\\\]^`{|}~]/g, '\\$&') // Escape special characters
+        .replace(/^-/, '\\-')           // Escape leading hyphen
+        .replace(/^\d/, '\\3$& ');      // Escape leading digit
+}
+
 class PageSnapshot {
-  constructor() {
+  constructor(page) {
+    this.page = page; // Store the puppeteer page instance
     this.$ = null;
     this.selectorCounter = 0;
     this.selectorToOriginalMap = new Map();
@@ -22,11 +31,11 @@ class PageSnapshot {
     this.latestDOMChangesForContentElements = [];
   }
 
-  async captureSnapshot(page) {
+  async captureSnapshot() {
     const snapshotStartTime = Date.now();
     try {
       // Then ensure DOM is ready (important for SPAs and dynamic content)
-      await page.waitForFunction(
+      await this.page.waitForFunction(
         () => document.readyState === 'complete',
         { timeout: 10000 }
       ).catch(e => {
@@ -35,10 +44,10 @@ class PageSnapshot {
 
       console.log('Page fully loaded');
       // Capture current URL
-      this.snapshot.url = await page.url();
+      this.snapshot.url = await this.page.url();
       
       // Capture both regular HTML and shadow DOM content
-      const { html, shadowDOMData, iframeData } = await page.evaluate(() => {
+      const { html, shadowDOMData, iframeData } = await this.page.evaluate(() => {
         function captureShadowDOM(root) {
           const shadowTrees = [];
           
@@ -111,7 +120,7 @@ class PageSnapshot {
 
       // Replace separate map generations with single combined call
       const mapsStartTime = Date.now();
-      const maps = await this.generatePageMaps(page);
+      const maps = await this.generatePageMaps();
       this.snapshot.interactive = maps.interactive;
       this.snapshot.content = maps.content;
       console.log(`Page maps generation took ${Date.now() - mapsStartTime}ms`);
@@ -124,7 +133,7 @@ class PageSnapshot {
 
       // Start observing DOM changes AFTER capturing the snapshot
       console.log('Starting DOM observer to track post-snapshot changes...');
-      await this.startDOMObserver(page);
+      await this.startDOMObserver();
 
       console.log(`Total snapshot capture took ${Date.now() - snapshotStartTime}ms`);
       return this.snapshot;
@@ -137,16 +146,24 @@ class PageSnapshot {
   sanitizeSelector(selector) {
     if (!selector) return selector;
     
+    // Handle ID selectors specially
+    if (selector.startsWith('#')) {
+        // For IDs, we need to escape special characters according to CSS rules
+        const id = selector.slice(1); // Remove the # symbol
+        return '#' + cssEscape(id);
+    }
+    
+    // For other selectors, replace problematic characters
     return selector
-      .replace(/[^\w-]/g, '_') // Replace any non-word chars (except hyphens) with underscore
-      .replace(/^(\d)/, '_$1') // Prefix with underscore if starts with number
-      .replace(/\\/g, '\\\\') // Escape backslashes
-      .replace(/'/g, "\\'")   // Escape single quotes
-      .replace(/"/g, '\\"')   // Escape double quotes
-      .replace(/\//g, '_')    // Replace forward slashes with underscore
-      .replace(/:/g, '_')     // Replace colons with underscore
-      .replace(/\./g, '_')    // Replace dots with underscore when not part of a class selector
-      .replace(/\s+/g, '_');  // Replace whitespace with underscore
+        .replace(/[^\w-]/g, '\\$&') // Escape special characters with backslash
+        .replace(/^(\d)/, '_$1')    // Prefix with underscore if starts with number
+        .replace(/\\/g, '\\\\')     // Escape backslashes
+        .replace(/'/g, "\\'")       // Escape single quotes
+        .replace(/"/g, '\\"')       // Escape double quotes
+        .replace(/\//g, '\\/')      // Escape forward slashes
+        .replace(/:/g, '\\:')       // Escape colons
+        .replace(/\./g, '\\.')      // Escape dots
+        .replace(/\s+/g, ' ');      // Normalize whitespace
   }
 
   generateSelector($el) {
@@ -154,7 +171,34 @@ class PageSnapshot {
     const startTime = performance.now();
     
     try {
-      // 1. First try ID - fastest path
+      // 1. First try test IDs (highest priority)
+      const testId = $el.attr('data-testid') || $el.attr('data-test-id') || $el.attr('data-qa');
+      if (testId) {
+        return `[data-testid="${testId}"]`;
+      }
+
+      // 2. Try href for anchor tags
+      if ($el.prop('tagName').toLowerCase() === 'a') {
+        const href = $el.attr('href');
+        if (href && !href.includes('{{') && !href.includes('${')) {
+          // Ensure href is not a template literal or dynamic
+          return `a[href="${href}"]`;
+        }
+      }
+
+      // 3. Try aria-label
+      const ariaLabel = $el.attr('aria-label');
+      if (ariaLabel) {
+        return `[aria-label="${ariaLabel}"]`;
+      }
+
+      // 4. Try name attribute
+      const name = $el.attr('name');
+      if (name) {
+        return `[name="${name}"]`;
+      }
+
+      // 5. Try ID
       const id = $el.attr('id');
       if (id) {
         const safeId = this.sanitizeSelector(id);
@@ -163,13 +207,7 @@ class PageSnapshot {
         }
       }
 
-      // 2. Try data-testid or similar attributes
-      const testId = $el.attr('data-testid') || $el.attr('data-test-id') || $el.attr('data-qa');
-      if (testId) {
-        return `[data-testid="${testId}"]`;
-      }
-
-      // 3. Build a path, but more efficiently
+      // 6. Build a path, but more efficiently
       const path = [];
       let current = $el;
       let maxAncestors = 4; // Limit path length
@@ -177,13 +215,45 @@ class PageSnapshot {
       while (current.length && maxAncestors > 0) {
         let selector = current.prop('tagName').toLowerCase();
         
+        // Check for test IDs at each level
+        const currentTestId = current.attr('data-testid') || 
+                            current.attr('data-test-id') || 
+                            current.attr('data-qa');
+        if (currentTestId) {
+          path.unshift(`[data-testid="${currentTestId}"]`);
+          break;
+        }
+
+        // Check for href at each level for anchor tags
+        if (selector === 'a') {
+          const href = current.attr('href');
+          if (href && !href.includes('{{') && !href.includes('${')) {
+            path.unshift(`a[href="${href}"]`);
+            break;
+          }
+        }
+
+        // Check for aria-label at each level
+        const currentAriaLabel = current.attr('aria-label');
+        if (currentAriaLabel) {
+          path.unshift(`[aria-label="${currentAriaLabel}"]`);
+          break;
+        }
+
+        // Check for name at each level
+        const currentName = current.attr('name');
+        if (currentName) {
+          path.unshift(`[name="${currentName}"]`);
+          break;
+        }
+        
         // Add id if present
         const currentId = current.attr('id');
         if (currentId) {
           const safeId = this.sanitizeSelector(currentId);
           if (safeId && /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(safeId)) {
             path.unshift(`#${safeId}`);
-            break; // ID found, we can stop here
+            break;
           }
         }
 
@@ -219,15 +289,7 @@ class PageSnapshot {
         maxAncestors--;
       }
 
-      // If path is empty (shouldn't happen), fallback to basic selector
-      if (path.length === 0) {
-        const tag = $el.prop('tagName').toLowerCase();
-        const index = $el.parent().children().index($el) + 1;
-        return `${tag}:nth-child(${index})`;
-      }
-
       return path.join(' > ');
-
     } catch (error) {
       console.warn('Selector generation failed, using fallback:', error);
       const tag = $el.prop('tagName').toLowerCase();
@@ -349,14 +411,14 @@ class PageSnapshot {
       .trim(); // Remove leading/trailing whitespace
   }
 
-  async startDOMObserver(page) {
+  async startDOMObserver() {
     try {
       // Clear any existing interval first
       if (this.changeCollectionInterval) {
         clearInterval(this.changeCollectionInterval);
       }
 
-      await page.evaluate(() => {
+      await this.page.evaluate(() => {
         window.__domChanges = [];
         
         // Helper function to get clean HTML content
@@ -471,7 +533,7 @@ class PageSnapshot {
       // Set up periodic collection of changes
       this.changeCollectionInterval = setInterval(async () => {
         try {
-          const changes = await page.evaluate(() => {
+          const changes = await this.page.evaluate(() => {
             const currentChanges = window.__domChanges;
             window.__domChanges = []; 
             return currentChanges;
@@ -516,23 +578,23 @@ class PageSnapshot {
               
             });
 
-            // Log the accumulated changes
-            console.log('Current accumulated changes:', {
-              interactiveCount: this.latestDOMChangesForInteractiveElements.length,
-              contentCount: this.latestDOMChangesForContentElements.length
-            });
+            // // Log the accumulated changes
+            // console.log('Current accumulated changes:', {
+            //   interactiveCount: this.latestDOMChangesForInteractiveElements.length,
+            //   contentCount: this.latestDOMChangesForContentElements.length
+            // });
 
-             // Save full accumulated changes periodically
-            fs.writeFileSync(
-              path.join(__dirname, 'test', `latest_interactive_changes_${Date.now()}.json`),
-              JSON.stringify(this.latestDOMChangesForInteractiveElements, null, 2),
-              'utf8'
-            );
-            fs.writeFileSync(
-              path.join(__dirname, 'test', `latest_content_changes_${Date.now()}.json`), 
-              JSON.stringify(this.latestDOMChangesForContentElements, null, 2),
-              'utf8'
-            );
+            //  // Save full accumulated changes periodically
+            // fs.writeFileSync(
+            //   path.join(__dirname, 'test', `latest_interactive_changes_${Date.now()}.json`),
+            //   JSON.stringify(this.latestDOMChangesForInteractiveElements, null, 2),
+            //   'utf8'
+            // );
+            // fs.writeFileSync(
+            //   path.join(__dirname, 'test', `latest_content_changes_${Date.now()}.json`), 
+            //   JSON.stringify(this.latestDOMChangesForContentElements, null, 2),
+            //   'utf8'
+            // );
           }
         } catch (error) {
           console.error('Error in DOM observer interval:', error);
@@ -608,7 +670,7 @@ class PageSnapshot {
     return maps;
   }
 
-  _generateMapsFromCheerio($, shadowDOM = null, iframeData = null, baseSelector = '') {
+  async _generateMapsFromCheerio($, shadowDOM = null, iframeData = null, baseSelector = '') {
     const interactive = [];
     const content = [];
 
@@ -628,17 +690,23 @@ class PageSnapshot {
     };
 
     // Process elements
-    $($.root()).find('*').removeAttr('style');  // Remove all style attributes at the start
-    $($.root()).children().find('*').addBack().each((_, element) => {
+    const elements = $($.root()).find('*').get();
+    for (const element of elements) {
         const $el = $(element);
 
         // Skip script and style elements early
         if (['script', 'style', 'noscript'].includes(element.tagName.toLowerCase())) {
-            return;
+            continue;
         }
 
         const elementSelector = this.generateSelector($el);
         const { selector, originalSelector } = processSelector(elementSelector);
+
+        // Check visibility in the browser before adding to maps
+        const isVisible = await this.isElementVisible(elementSelector);
+        if (!isVisible) {
+            continue;
+        }
 
         // Process for interactive map
         if ($el.is('input, textarea, select, [type="search"], [contenteditable="true"], faceplate-search-input, *[role="searchbox"], *[role="textbox"]')) {
@@ -774,7 +842,7 @@ class PageSnapshot {
                 });
             }
         }
-    });
+    }
 
     // Process shadow DOM
     if (shadowDOM) {
@@ -862,10 +930,10 @@ class PageSnapshot {
       id: attributes.id
     });
   }
-  async getNewMapItems(page) {
+  async getNewMapItems() {
     try {
       // Get new snapshot
-      await this.captureSnapshot(page);
+      await this.captureSnapshot();
       const newContent = this.snapshot.content;
       const newInteractive = this.snapshot.interactive;
 
@@ -960,6 +1028,31 @@ class PageSnapshot {
     });
     return stringify ? JSON.stringify(cleanedMap, null, 2) : cleanedMap;
   }
+
+  async isElementVisible(selector) {
+    try {
+      return await this.page.evaluate((sel) => {
+        const element = document.querySelector(sel);
+        if (!element) return false;
+        
+        const style = window.getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        
+        return !!(
+          element.offsetWidth > 0 &&
+          element.offsetHeight > 0 &&
+          style.display !== 'none' &&
+          style.visibility !== 'hidden' &&
+          style.opacity !== '0' &&
+          rect.width > 0 &&
+          rect.height > 0
+        );
+      }, selector);
+    } catch (error) {
+      console.warn(`Error checking visibility for selector ${selector}:`, error);
+      return false;
+    }
+  }
 }
 
 module.exports = PageSnapshot;
@@ -971,8 +1064,7 @@ if (require.main === module) {
   (async () => {
     let browser;
     try {
-      //const url = 'https://google.com';
-       const url = 'https://twitter.com/elonmusk';
+      const url = 'https://twitter.com/elonmusk';
       console.log(`Testing PageSnapshot with URL: ${url}`);
 
       console.log('Launching browser...');
@@ -989,8 +1081,8 @@ if (require.main === module) {
       await page.goto(url, { waitUntil: 'networkidle2', timeout: 120000 });
 
       console.log('Taking page snapshot...');
-      const snapshot = new PageSnapshot();
-      const result = await snapshot.captureSnapshot(page);
+      const snapshot = new PageSnapshot(page);
+      const result = await snapshot.captureSnapshot();
       
       console.log('\nSnapshot captured successfully!');
       console.log('Files saved with timestamp:', result.timestamp);
@@ -1000,7 +1092,7 @@ if (require.main === module) {
       const checkInterval = setInterval(async () => {
         try {
           console.log('\nChecking for new content...');
-          const newItems = await snapshot.getNewMapItems(page);
+          const newItems = await snapshot.getNewMapItems();
           console.log(`Found ${newItems.content.length} new content items`);
           console.log(`Found ${Object.values(newItems.interactive).flat().length} new interactive items`);
         } catch (error) {

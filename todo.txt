@@ -59,9 +59,7 @@ simplfy step state and emitting status (after start : running, after : succes or
 close browser when websocket connection for that flow is closed, done 
 make getting new content and interactive map work properly, done 
 fix selecti nputs, add all options, done 
-
-
-fix browser intiilizing status messazges not working 
+fix browser intiilizing status messazges not working, done 
 
 run each benchmark, troubleshoot and improve :
 - go to anonymiosu instagram stories, open each story modal and get all stories posts :
@@ -92,12 +90,18 @@ run each benchmark, troubleshoot and improve :
     Solution: 
         use flash instead of flash-8b + compare preivous ocntnet map vs newer content map to get new content hybrid with dom monitoring 
 
+- fill out facebook signup form  
+    Problem: selectors using Ids are not consistent, done 
+    Solution: 
+        use other options first before using ids 
+
+   Problem: using inputs that are actually hidden, done 
+
 
 benchmarks: 
 - go to anonymiosu instagram stories, and scrape latest stories media, DONE 
 - go to airbnb, handle infinite scroll and extract 1000 listings details, DONE 
 - go to twitter profile, and extract list of posts until you get 100, DONE 
-- create a facebook account 
+- fill out facebook signup form , DONE 
 
 
-so i have an idea. see hwo to extract data, we havea function extractStructuredContentUsingAI that bascially uses gmieni to feed it the whole content then it outptus it in a structured format. this works, and we also use it for infinite loading. so this works but it's slow. im thinking of trying something : if the data we want on the page is in predictbael structure, like a listing or a tbale or wahtever, why not use the other function 

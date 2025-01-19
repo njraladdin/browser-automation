@@ -9,7 +9,7 @@ const { jsonrepair } = require('jsonrepair');
 
 class AutomationFlow {
   constructor() {
-    this.pageSnapshot = new PageSnapshot();
+    this.pageSnapshot = null;
     this.browser = null;
     this.page = null;
     this.automationSteps = [];
@@ -56,6 +56,9 @@ class AutomationFlow {
         });
 
         this.page = await this.browser.newPage();
+        
+        // Initialize PageSnapshot with page instance
+        this.pageSnapshot = new PageSnapshot(this.page);
         
         statusEmitter({ message: `Navigating to ${this.INITIAL_URL}...`, stepIndex });
         console.log(clc.cyan('▶ Navigating to initial URL...'));
@@ -130,9 +133,9 @@ class AutomationFlow {
         this.page = page;
       }
 
-      // Create fresh snapshot
+      // Create fresh snapshot - no need to pass page anymore
       console.log(clc.cyan('▶ Creating page snapshot...'));
-      await this.pageSnapshot.captureSnapshot(this.page);
+      await this.pageSnapshot.captureSnapshot();
 
       return { success: true, browser: this.browser, page: this.page };
     } catch (error) {
@@ -160,7 +163,7 @@ class AutomationFlow {
       
       statusEmitter({ message: 'Analyzing page and generating automation code...', stepIndex: this.automationSteps.length });
 
-      const snapshot = await this.pageSnapshot.captureSnapshot(this.page);
+      const snapshot = await this.pageSnapshot.captureSnapshot();
 
       const previousSteps = this.automationSteps.map((step, index) => {
         let extractedDataSummary = '';
@@ -205,11 +208,11 @@ ${step.code}${extractedDataSummary}`;
       }
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({
-        model: "gemini-2.0-flash-exp",
+        model: "gemini-exp-1206",
         generationConfig: {
           temperature: 0.7,
           topP: 0.95,
-          topK: 40,
+          topK: 64,
           maxOutputTokens: 8192,
         }
       });
@@ -302,7 +305,7 @@ ${step.code}${extractedDataSummary}`;
       let contentToProcess;
       if (options.extractFromNewlyAddedContent) {
         console.log(clc.cyan('▶ Extracting from newly added content...'));
-        const newItems = await this.pageSnapshot.getNewMapItems(this.page);
+        const newItems = await this.pageSnapshot.getNewMapItems();
         const newContentItems = newItems.content;
         
         if (!newContentItems?.length) {
@@ -511,7 +514,7 @@ ${step.code}${extractedDataSummary}`;
       console.log(clc.cyan('\n▶ Finding selector for:'), description);
 
       // Take a snapshot and get new items
-      const newItems = await this.pageSnapshot.getNewMapItems(this.page);
+      const newItems = await this.pageSnapshot.getNewMapItems();
       
       if (!newItems.content.length && !newItems.interactive.length) {
         console.log(clc.red('✗ No new elements found'));
@@ -636,7 +639,7 @@ ${step.code}${extractedDataSummary}`;
       console.log(clc.cyan('\n▶ Generating next action code for:'), description);
 
       // Get new items instead of using DOM changes
-      const newItems = await this.pageSnapshot.getNewMapItems(this.page);
+      const newItems = await this.pageSnapshot.getNewMapItems();
       
       if (!newItems.content.length && !newItems.interactive.length) {
         console.log(clc.red('✗ No new elements found'));
