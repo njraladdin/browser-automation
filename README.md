@@ -3,21 +3,97 @@
 
 A browser automation tool that lets you create automation flows using natural language instructions. Write what you want to do in plain English, and the AI will generate and execute the appropriate automation code.
 
-## What it does
+## How it Works
 
-- Converts natural language instructions into working browser automation code
-- Executes automation steps with real-time visual feedback
-- Captures screenshots and extracted data for each step
-- Saves flows for reuse and sharing
-- Handles dynamic content and complex interactions
+1. User enters natural language instruction
+2. Google Gemini AI converts it to Puppeteer code
+3. Code executes in automated browser
+4. Results (screenshots, data) returned to user
+
+The AI has access to helper functions for common tasks like element selection and data extraction.
+
 
 ## Benchmarks
 
 Successfully automated common web tasks like:
-- Scraping Instagram stories from anonymous profiles
+- Scraping Instagram stories 
 - Extracting 1000 Airbnb listings while handling infinite scroll
 - Collecting 100 posts from Twitter profiles
 - Filling out Facebook signup forms
+
+
+## Examples
+
+![Screenshot of the application](docs/images/screenshot.png)
+
+Here's an example of how the AI automatically generated and executed browser automation code based on natural language prompts:
+
+### Step 1: Navigate to Profile
+**Prompt:** "Go to Elon Musk's Twitter URL directly"
+
+The AI generated and executed this code in an automated browser:
+
+![Step 1 Code and Execution](docs/images/step1.png)
+
+### Step 2: Extract Posts with Infinite Scroll
+**Prompt:** "There is infinite scrolling here. I want you to extract the posts. I want 50 posts"
+
+The AI generated and executed this sophisticated scrolling and extraction code:
+
+![Step 2 Code and Execution](docs/images/step2.png)
+
+**Example Extracted Data:**
+```json
+{
+  "items": [
+    {
+      "author": "Elon Musk @elonmusk",
+      "post_text": "I fully endorse President Trump and hope for his rapid recovery",
+      "post_date": "Jul 13, 2024",
+      "replies": "86K",
+      "reposts": "399K",
+      "likes": "2.3M",
+      "views": "222M",
+      "images": [
+        "https://pbs.twimg.com/amplify_video_thumb/1812256938383568896/img/_R5F6myzmRblxf_8.jpg"
+      ],
+      "videos": [
+        "https://video.twimg.com/amplify_video/1812256938383568896/vid/avc1/1280x720/example.mp4"
+      ]
+    },
+    {
+      "author": "Elon Musk @elonmusk",
+      "post_text": "The future is gonna be so 🔥🇺🇸🇺🇸",
+      "post_date": "Nov 6, 2024",
+      "replies": "59K",
+      "reposts": "230K",
+      "likes": "2.6M",
+      "views": "159M",
+      "images": [
+        "https://pbs.twimg.com/media/GbrTB8GXEAYrk2N?format=jpg&name=small",
+        "https://pbs.twimg.com/media/GbrTB8HWAAAbc12?format=jpg&name=small"
+      ],
+      "videos": []
+    },
+    {
+      "author": "Elon Musk @elonmusk",
+      "post_text": "SpaceX Starship Launch",
+      "post_date": "Aug 6, 2024",
+      "replies": "45K",
+      "reposts": "102K",
+      "likes": "894K",
+      "views": "12.4M",
+      "images": [
+        "https://pbs.twimg.com/amplify_video_thumb/1820602688117354497/img/YZTX78aqXVB2dkG3.jpg"
+      ],
+      "videos": [
+        "https://video.twimg.com/amplify_video/1820602688117354497/vid/avc1/1280x720/launch_video.mp4"
+      ]
+    }
+  ]
+}
+```
+
 
 ## Setup
 
