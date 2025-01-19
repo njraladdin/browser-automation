@@ -110,27 +110,36 @@ Description Examples:
 === INFINITE SCROLL HANDLING ===
 OVERVIEW:
 • Use extractStructuredContentUsingAI with extractFromNewlyAddedContent option
-• Implement smooth scrolling in chunks
+• Implement smooth scrolling until target item count is reached
 • Track and verify new content loading
+• Handle cases where scrolling doesn't yield new items
 
 Example implementation:
 try {
   console.log('Starting infinite scroll extraction...');
   let allItems = [];
+  const targetItemCount = 100; // Can be adjusted based on needs
+  let noNewItemsCount = 0;
+  const MAX_NO_NEW_ITEMS = 3; // Stop if we get no new items 3 times in a row
   
   // Get initial content
   const initialData = await extractStructuredContentUsingAI('Extract all product listings with their details');
   if (initialData.items) {
     allItems = [...initialData.items];
     console.log(`Extracted ${allItems.length} initial items`);
+    statusEmitter({ 
+      message: `Extracted ${allItems.length} initial items`, 
+      stepIndex: 0,
+      data: { itemCount: allItems.length, targetCount: targetItemCount }
+    });
   }
   
-  // Scroll and extract 3 more times
-  for (let i = 0; i < 3; i++) {
-    console.log(`Starting scroll sequence ${i + 2}...`);
+  // Keep scrolling until we reach target or determine we can't get more items
+  while (allItems.length < targetItemCount && noNewItemsCount < MAX_NO_NEW_ITEMS) {
+    console.log(`Current items: ${allItems.length}. Target: ${targetItemCount}`);
     
-    // Scroll in 4 smooth chunks
-    for (let j = 0; j < 4; j++) {
+    // Scroll smoothly
+    for (let j = 0; j < 2; j++) {
       await page.evaluate(() => {
         window.scrollBy({
           top: window.innerHeight,
@@ -142,7 +151,7 @@ try {
     
     // Wait for content to load
     console.log('Waiting for new content to load...');
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise(resolve => setTimeout(resolve, 3000));
     
     // Extract only newly loaded content
     const newData = await extractStructuredContentUsingAI(
@@ -152,22 +161,47 @@ try {
     
     if (newData.items && newData.items.length > 0) {
       allItems = [...allItems, ...newData.items];
+      noNewItemsCount = 0; // Reset counter since we found items
       console.log(`Added ${newData.items.length} new items. Total: ${allItems.length}`);
+      statusEmitter({ 
+        message: `Found ${newData.items.length} more items. Total: ${allItems.length}`, 
+        stepIndex: 0,
+        data: { itemCount: allItems.length, targetCount: targetItemCount }
+      });
     } else {
-      console.log('No new items found, breaking scroll loop');
-      break;
+      noNewItemsCount++;
+      console.log(`No new items found (attempt ${noNewItemsCount} of ${MAX_NO_NEW_ITEMS})`);
+      statusEmitter({ 
+        message: `No new items found (attempt ${noNewItemsCount})`, 
+        stepIndex: 0 
+      });
     }
   }
+  
+  const reason = allItems.length >= targetItemCount 
+    ? 'Reached target item count'
+    : 'No more items available';
+  
+  console.log(`Finished scrolling: ${reason}`);
+  statusEmitter({ 
+    message: `Extraction complete: ${reason}. Total items: ${allItems.length}`, 
+    stepIndex: 0 
+  });
   
   return {
     success: true,
     extractedData: {
       items: allItems,
-      totalItems: allItems.length
+      totalItems: allItems.length,
+      reachedTarget: allItems.length >= targetItemCount
     }
   };
 } catch (error) {
   console.error('Failed to extract infinite scroll data:', error);
+  statusEmitter({ 
+    message: `Error during extraction: ${error.message}`, 
+    stepIndex: 0 
+  });
   throw error;
 }
 
