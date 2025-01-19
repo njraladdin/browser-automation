@@ -5,10 +5,10 @@ require('dotenv').config();
 
 // Custom CSS escape function since we're in Node.js environment
 function cssEscape(value) {
-    return value
-        .replace(/[!"#$%&'()*+,.\/:;<=>?@[\\\]^`{|}~]/g, '\\$&') // Escape special characters
-        .replace(/^-/, '\\-')           // Escape leading hyphen
-        .replace(/^\d/, '\\3$& ');      // Escape leading digit
+  return value
+    .replace(/[!"#$%&'()*+,.\/:;<=>?@[\\\]^`{|}~]/g, '\\$&') // Escape special characters
+    .replace(/^-/, '\\-')           // Escape leading hyphen
+    .replace(/^\d/, '\\3$& ');      // Escape leading digit
 }
 
 class PageSnapshot {
@@ -45,12 +45,12 @@ class PageSnapshot {
       console.log('Page fully loaded');
       // Capture current URL
       this.snapshot.url = await this.page.url();
-      
+
       // Capture both regular HTML and shadow DOM content
       const { html, shadowDOMData, iframeData } = await this.page.evaluate(() => {
         function captureShadowDOM(root) {
           const shadowTrees = [];
-          
+
           const hosts = root.querySelectorAll('*');
           hosts.forEach(host => {
             if (host.shadowRoot) {
@@ -67,10 +67,10 @@ class PageSnapshot {
               });
             }
           });
-          
+
           return shadowTrees;
         }
-        
+
         // Add iframe content capture
         function captureIframes() {
           const iframes = [];
@@ -89,7 +89,7 @@ class PageSnapshot {
           });
           return iframes;
         }
-        
+
         return {
           html: document.documentElement.outerHTML,
           shadowDOMData: captureShadowDOM(document),
@@ -124,7 +124,7 @@ class PageSnapshot {
       this.snapshot.interactive = maps.interactive;
       this.snapshot.content = maps.content;
       console.log(`Page maps generation took ${Date.now() - mapsStartTime}ms`);
-      
+
       // Set timestamp
       this.snapshot.timestamp = new Date().toISOString();
 
@@ -145,31 +145,31 @@ class PageSnapshot {
 
   sanitizeSelector(selector) {
     if (!selector) return selector;
-    
+
     // Handle ID selectors specially
     if (selector.startsWith('#')) {
-        // For IDs, we need to escape special characters according to CSS rules
-        const id = selector.slice(1); // Remove the # symbol
-        return '#' + cssEscape(id);
+      // For IDs, we need to escape special characters according to CSS rules
+      const id = selector.slice(1); // Remove the # symbol
+      return '#' + cssEscape(id);
     }
-    
+
     // For other selectors, replace problematic characters
     return selector
-        .replace(/[^\w-]/g, '\\$&') // Escape special characters with backslash
-        .replace(/^(\d)/, '_$1')    // Prefix with underscore if starts with number
-        .replace(/\\/g, '\\\\')     // Escape backslashes
-        .replace(/'/g, "\\'")       // Escape single quotes
-        .replace(/"/g, '\\"')       // Escape double quotes
-        .replace(/\//g, '\\/')      // Escape forward slashes
-        .replace(/:/g, '\\:')       // Escape colons
-        .replace(/\./g, '\\.')      // Escape dots
-        .replace(/\s+/g, ' ');      // Normalize whitespace
+      .replace(/[^\w-]/g, '\\$&') // Escape special characters with backslash
+      .replace(/^(\d)/, '_$1')    // Prefix with underscore if starts with number
+      .replace(/\\/g, '\\\\')     // Escape backslashes
+      .replace(/'/g, "\\'")       // Escape single quotes
+      .replace(/"/g, '\\"')       // Escape double quotes
+      .replace(/\//g, '\\/')      // Escape forward slashes
+      .replace(/:/g, '\\:')       // Escape colons
+      .replace(/\./g, '\\.')      // Escape dots
+      .replace(/\s+/g, ' ');      // Normalize whitespace
   }
 
   generateSelector($el) {
     // Start timing
     const startTime = performance.now();
-    
+
     try {
       // 1. First try test IDs (highest priority)
       const testId = $el.attr('data-testid') || $el.attr('data-test-id') || $el.attr('data-qa');
@@ -211,14 +211,14 @@ class PageSnapshot {
       const path = [];
       let current = $el;
       let maxAncestors = 4; // Limit path length
-      
+
       while (current.length && maxAncestors > 0) {
         let selector = current.prop('tagName').toLowerCase();
-        
+
         // Check for test IDs at each level
-        const currentTestId = current.attr('data-testid') || 
-                            current.attr('data-test-id') || 
-                            current.attr('data-qa');
+        const currentTestId = current.attr('data-testid') ||
+          current.attr('data-test-id') ||
+          current.attr('data-qa');
         if (currentTestId) {
           path.unshift(`[data-testid="${currentTestId}"]`);
           break;
@@ -246,7 +246,7 @@ class PageSnapshot {
           path.unshift(`[name="${currentName}"]`);
           break;
         }
-        
+
         // Add id if present
         const currentId = current.attr('id');
         if (currentId) {
@@ -261,8 +261,8 @@ class PageSnapshot {
         const classes = current.attr('class');
         if (classes) {
           const goodClasses = classes.split(/\s+/)
-            .filter(cls => 
-              cls && 
+            .filter(cls =>
+              cls &&
               cls.length > 3 &&
               // Avoid dynamic/utility classes
               !cls.match(/^(hover|focus|active|text-|bg-|p-|m-|flex|grid|w-|h-|border)/) &&
@@ -313,14 +313,14 @@ class PageSnapshot {
   }
 
   async saveDebugFiles() {
-    
+
     const testDir = path.join(__dirname, 'test');
     if (!fs.existsSync(testDir)) {
       fs.mkdirSync(testDir);
     }
 
     const timestamp = this.snapshot.timestamp.replace(/[:.]/g, '-');
-    
+
     // Ensure we have resolved HTML content
 
     const interactiveContent = await Promise.resolve(this.snapshot.interactive);
@@ -344,7 +344,7 @@ class PageSnapshot {
   replaceSelectorsWithOriginals(text) {
     // Regular expression to match __SELECTOR__N pattern
     const selectorPattern = /__SELECTOR__\d+/g;
-    
+
     return text.replace(selectorPattern, (match) => {
       const originalSelector = this.selectorToOriginalMap.get(match);
       return originalSelector || match; // Return original if found, otherwise keep unchanged
@@ -357,7 +357,7 @@ class PageSnapshot {
     // Helper to process an element and its attributes
     const processElement = ($element) => {
       const texts = [];
-      
+
       // Get element's text content
       const text = $element.text().trim();
       if (text) texts.push(text);
@@ -378,28 +378,28 @@ class PageSnapshot {
 
     // Get parent texts (2 levels up)
     let parent = $el.parent();
-    for(let i = 0; i < 2 && parent.length; i++) {
+    for (let i = 0; i < 2 && parent.length; i++) {
       const text = processElement(parent.clone().children().remove().end());
-      if(text) nearbyElements.add(`parent[${i+1}]: ${text}`);
+      if (text) nearbyElements.add(`parent[${i + 1}]: ${text}`);
       parent = parent.parent();
     }
 
     // Get sibling texts (previous and next)
     const prevSibling = $el.prev();
     const nextSibling = $el.next();
-    if(prevSibling.length) nearbyElements.add(`prev_sibling: ${processElement(prevSibling)}`);
-    if(nextSibling.length) nearbyElements.add(`next_sibling: ${processElement(nextSibling)}`);
+    if (prevSibling.length) nearbyElements.add(`prev_sibling: ${processElement(prevSibling)}`);
+    if (nextSibling.length) nearbyElements.add(`next_sibling: ${processElement(nextSibling)}`);
 
     // Get child texts (direct children and grandchildren)
     $el.children().slice(0, 2).each((index, child) => {
       const text = processElement(this.$(child));
-      if(text) nearbyElements.add(`child[${index+1}]: ${text}`);
+      if (text) nearbyElements.add(`child[${index + 1}]: ${text}`);
     });
 
     // Get texts from elements with aria-label nearby
     $el.parent().find('[aria-label], [placeholder], [type], [src]').slice(0, 2).each((index, el) => {
       const text = processElement(this.$(el));
-      if(text) nearbyElements.add(`nearby_element[${index+1}]: ${text}`);
+      if (text) nearbyElements.add(`nearby_element[${index + 1}]: ${text}`);
     });
 
     return Array.from(nearbyElements)
@@ -420,23 +420,23 @@ class PageSnapshot {
 
       await this.page.evaluate(() => {
         window.__domChanges = [];
-        
+
         // Helper function to get clean HTML content
         function getCleanHTML(element) {
           if (element.nodeType !== 1) return element.textContent;
-          
+
           const container = document.createElement('div');
           container.appendChild(element.cloneNode(true));
-            // Remove all style/script elements
-            const styles = container.getElementsByTagName('style');
-            const scripts = container.getElementsByTagName('script');
-            [...styles, ...scripts].forEach(el => el.remove());
+          // Remove all style/script elements
+          const styles = container.getElementsByTagName('style');
+          const scripts = container.getElementsByTagName('script');
+          [...styles, ...scripts].forEach(el => el.remove());
           // Remove all style/script elements and style attributes
           const elements = container.getElementsByTagName('*');
           for (let el of elements) {
-              el.removeAttribute('style');
+            el.removeAttribute('style');
           }
-          
+
           return container.innerHTML;
         }
 
@@ -444,10 +444,10 @@ class PageSnapshot {
         function getElementPath(element) {
           const path = [];
           let currentNode = element;
-          
+
           while (currentNode && currentNode !== document.body) {
             let selector = currentNode.tagName.toLowerCase();
-            
+
             if (currentNode.id) {
               selector = `#${currentNode.id}`;
               path.unshift(selector);
@@ -455,11 +455,11 @@ class PageSnapshot {
             } else {
               const classes = Array.from(currentNode.classList)
                 .filter(cls => !cls.match(/^(hover|focus|active)/) && !cls.includes('(') && !cls.includes(')') && !cls.includes('[') && !cls.includes(']'));
-              
+
               if (classes.length) {
                 selector += '.' + classes.join('.');
               }
-              
+
               const parent = currentNode.parentNode;
               if (parent) {
                 const siblings = Array.from(parent.children);
@@ -468,27 +468,26 @@ class PageSnapshot {
                   selector += `:nth-child(${index})`;
                 }
               }
-              
+
               path.unshift(selector);
               currentNode = currentNode.parentNode;
             }
           }
-          
+
           return path.join(' > ');
         }
 
         // Create mutation observer
         const observer = new MutationObserver((mutations) => {
           mutations.forEach((mutation) => {
-            if (mutation.target.tagName === 'STYLE' || 
-                mutation.target.tagName === 'SCRIPT' || 
-                mutation.target.tagName === 'LINK' ||
-                mutation.target.tagName === 'HEAD') {
+            if (mutation.target.tagName === 'STYLE' ||
+              mutation.target.tagName === 'SCRIPT' ||
+              mutation.target.tagName === 'LINK' ||
+              mutation.target.tagName === 'HEAD') {
               return;
             }
 
             if (mutation.type === 'childList') {
-              console.log(mutation.addedNodes)
               const addedNode = mutation.addedNodes[0];
               if (addedNode) {
                 const change = {
@@ -503,11 +502,11 @@ class PageSnapshot {
                   changes: {
                     added: {
                       type: addedNode.nodeType === 1 ? 'element' : 'text',
-                      content: addedNode.nodeType === 1 ? 
-                        getCleanHTML(addedNode) : 
+                      content: addedNode.nodeType === 1 ?
+                        getCleanHTML(addedNode) :
                         addedNode.textContent
                     }
-                   
+
                   }
                 };
 
@@ -535,66 +534,66 @@ class PageSnapshot {
         try {
           const changes = await this.page.evaluate(() => {
             const currentChanges = window.__domChanges;
-            window.__domChanges = []; 
+            window.__domChanges = [];
             return currentChanges;
           }).catch(error => {
-            // If browser is disconnected, clear the interval
             if (error.message.includes('detached') || error.message.includes('disconnected')) {
               console.log('Browser disconnected, clearing DOM observer interval');
               clearInterval(this.changeCollectionInterval);
             }
-            return null;
+            return [];  // Return empty array instead of null
           });
 
           if (changes && changes.length > 0) {
-            changes.forEach(change => {
-                const addedNode = change.changes.added;
-                if (addedNode && addedNode.type === 'element') {
-                  const html = addedNode.content;
-                  const baseSelector = change.selectorPath;
+            for (const change of changes) {
+              const addedNode = change.changes?.added;  // Add null check with ?
+              if (addedNode && addedNode.type === 'element') {
+                const html = addedNode.content;
+                const baseSelector = change.selectorPath;
 
-                  if (!html) return;
+                if (!html) continue;
 
-                  const $ = cheerio.load(html, {
-                    xml: {
-                      withDomLvl1: true,
-                      xmlMode: false,
-                    },
-                    isDocument: false
-                  });
+                const $ = cheerio.load(html, {
+                  xml: {
+                    withDomLvl1: true,
+                    xmlMode: false,
+                  },
+                  isDocument: false
+                });
 
-                  const { interactive, content } = this._generateMapsFromCheerio($, null, null, baseSelector);
+                const { interactive, content } = await this._generateMapsFromCheerio($, null, null, baseSelector);
 
-                  if (content.length > 0 || interactive.length > 0) {
-                    if (interactive.length > 0) {
-                      this.latestDOMChangesForInteractiveElements.push(...interactive);
-                    }
-
-                    if (content.length > 0) {
-                      this.latestDOMChangesForContentElements.push(...content);
-                    }
-                  }
+                // Add null checks and ensure arrays
+                if (Array.isArray(interactive) && interactive.length > 0) {
+                  this.latestDOMChangesForInteractiveElements.push(...interactive);
                 }
-              
+
+                if (Array.isArray(content) && content.length > 0) {
+                  this.latestDOMChangesForContentElements.push(...content);
+                }
+              }
+            }
+
+            // Log the accumulated changes
+            console.log('Current accumulated changes:', {
+              interactiveCount: this.latestDOMChangesForInteractiveElements.length,
+              contentCount: this.latestDOMChangesForContentElements.length
             });
 
-            // // Log the accumulated changes
-            // console.log('Current accumulated changes:', {
-            //   interactiveCount: this.latestDOMChangesForInteractiveElements.length,
-            //   contentCount: this.latestDOMChangesForContentElements.length
-            // });
-
-            //  // Save full accumulated changes periodically
-            // fs.writeFileSync(
-            //   path.join(__dirname, 'test', `latest_interactive_changes_${Date.now()}.json`),
-            //   JSON.stringify(this.latestDOMChangesForInteractiveElements, null, 2),
-            //   'utf8'
-            // );
-            // fs.writeFileSync(
-            //   path.join(__dirname, 'test', `latest_content_changes_${Date.now()}.json`), 
-            //   JSON.stringify(this.latestDOMChangesForContentElements, null, 2),
-            //   'utf8'
-            // );
+            // Save full accumulated changes periodically
+            if (this.latestDOMChangesForInteractiveElements.length > 0 || 
+                this.latestDOMChangesForContentElements.length > 0) {
+              fs.writeFileSync(
+                path.join(__dirname, 'test', `latest_interactive_changes_${Date.now()}.json`),
+                JSON.stringify(this.latestDOMChangesForInteractiveElements, null, 2),
+                'utf8'
+              );
+              fs.writeFileSync(
+                path.join(__dirname, 'test', `latest_content_changes_${Date.now()}.json`),
+                JSON.stringify(this.latestDOMChangesForContentElements, null, 2),
+                'utf8'
+              );
+            }
           }
         } catch (error) {
           console.error('Error in DOM observer interval:', error);
@@ -616,11 +615,11 @@ class PageSnapshot {
     return content
       .map(item => {
         let result = '';
-        
+
         // Add tag (with fallback) and aria-label if present
         const tag = item.tag || item.type || 'element';
         result = `[${tag}${item['aria-label'] ? ` aria-label: ${item['aria-label']}` : ''}${includeSelectors && item.selector ? ` selector:"${item.selector}"` : ''}]`;
-        
+
         // Add content or src
         if (item.content) {
           result += ` ${item.content}`;
@@ -644,7 +643,7 @@ class PageSnapshot {
         } else {
           return null;
         }
-        
+
         return result;
       })
       .filter(Boolean)
@@ -654,258 +653,266 @@ class PageSnapshot {
   async generatePageMaps() {
     const mapsStartTime = Date.now();
     const maps = await this._generateMapsFromCheerio(
-      this.$, 
+      this.$,
       this.snapshot.shadowDOM,
       this.snapshot.iframeData
     );
-    
+
     this.snapshot.interactive = maps.interactive;
     this.snapshot.content = maps.content;
-    
+
     console.log(`Generated maps with:
       - ${maps.interactive.length} interactive items
       - ${maps.content.length} content items
       Time taken: ${Date.now() - mapsStartTime}ms`);
-    
+
     return maps;
   }
 
   async _generateMapsFromCheerio($, shadowDOM = null, iframeData = null, baseSelector = '') {
     const interactive = [];
     const content = [];
+    const isDOMChange = !!baseSelector;
 
     // Helper function to process selector
     const processSelector = (originalSelector) => {
-        let finalSelector = originalSelector;
-        if (baseSelector) {
-            finalSelector = `${baseSelector} > ${originalSelector}`;
-        }
+      let finalSelector = originalSelector;
+      if (baseSelector) {
+        finalSelector = `${baseSelector} > ${originalSelector}`;
+      }
 
-        if (finalSelector.length <= 10) {
-            return { selector: finalSelector, originalSelector: finalSelector };
-        }
-        const shortSelector = `__SELECTOR__${++this.selectorCounter}`;
-        this.selectorToOriginalMap.set(shortSelector, finalSelector);
-        return { selector: shortSelector, originalSelector: finalSelector };
+      if (finalSelector.length <= 10) {
+        return { selector: finalSelector, originalSelector: finalSelector };
+      }
+      const shortSelector = `__SELECTOR__${++this.selectorCounter}`;
+      this.selectorToOriginalMap.set(shortSelector, finalSelector);
+      return { selector: shortSelector, originalSelector: finalSelector };
+    };
+
+    // Helper function to clean HTML
+    const cleanHtml = ($elem) => {
+      const $clone = $elem.clone();
+      // Remove style attributes from element and all its descendants
+      $clone.find('*').removeAttr('style');
+      $clone.removeAttr('style');
+      return $clone.wrap('<div>').parent().html();
     };
 
     // Process elements
     const elements = $($.root()).find('*').get();
     for (const element of elements) {
-        const $el = $(element);
+      const $el = $(element);
 
-        // Skip script and style elements early
-        if (['script', 'style', 'noscript'].includes(element.tagName.toLowerCase())) {
-            continue;
-        }
+      // Skip script and style elements early
+      if (['script', 'style', 'noscript'].includes(element.tagName.toLowerCase())) {
+        continue;
+      }
 
-        const elementSelector = this.generateSelector($el);
-        const { selector, originalSelector } = processSelector(elementSelector);
+      const elementSelector = this.generateSelector($el);
+      const { selector, originalSelector } = processSelector(elementSelector);
 
-        // Check visibility in the browser before adding to maps
+      // Skip visibility check for DOM changes
+      if (!isDOMChange) {
         const isVisible = await this.isElementVisible(elementSelector);
         if (!isVisible) {
-            continue;
+          continue;
         }
+      }
 
-        // Process for interactive map
-        if ($el.is('input, textarea, select, [type="search"], [contenteditable="true"], faceplate-search-input, *[role="searchbox"], *[role="textbox"]')) {
-            const interactiveItem = {
-                type: 'input',
-                inputType: $el.attr('type') || element.tagName.toLowerCase(),
-                selector: selector,
-                originalSelector: originalSelector,
-                placeholder: $el.attr('placeholder'),
-                id: $el.attr('id'),
-                role: $el.attr('role'),
-                'aria-label': $el.attr('aria-label'),
-                value: $el.attr('value'),
-                name: $el.attr('name'),
-                label: this.findAssociatedLabel($el),
-                html: $el.clone().wrap('<div>').parent().html() // Get HTML for this specific element
-            };
-
-            // Add options array for select elements
-            if (element.tagName.toLowerCase() === 'select') {
-                interactiveItem.options = $el.find('option').map((_, option) => {
-                    const $option = $(option);
-                    return {
-                        value: $option.attr('value'),
-                        text: $option.text().trim(),
-                        selected: $option.attr('selected') !== undefined
-                    };
-                }).get();
-            }
-
-            interactive.push(interactiveItem);
-        }
-
-        // Get clean text content by removing style/script elements first
-        const getCleanText = ($elem) => {
-            const $clone = $elem.clone();
-            $clone.find('style, script').remove();
-            return $clone.text().trim();
+      // Process for interactive map
+      if ($el.is('input, textarea, select, [type="search"], [contenteditable="true"], faceplate-search-input, *[role="searchbox"], *[role="textbox"]')) {
+        const interactiveItem = {
+          type: 'input',
+          inputType: $el.attr('type') || element.tagName.toLowerCase(),
+          selector: selector,
+          originalSelector: originalSelector,
+          placeholder: $el.attr('placeholder'),
+          id: $el.attr('id'),
+          role: $el.attr('role'),
+          'aria-label': $el.attr('aria-label'),
+          value: $el.attr('value'),
+          name: $el.attr('name'),
+          label: this.findAssociatedLabel($el),
+          html: cleanHtml($el)
         };
-        if ($el.is('button, [role="button"]')) {
-            interactive.push({
-                type: 'button',
-                text: getCleanText($el),
-                selector: selector,
-                originalSelector: originalSelector,
-                buttonType: $el.attr('type'),
-                id: $el.attr('id'),
-                role: $el.attr('role'),
-                'aria-label': $el.attr('aria-label'),
-                disabled: $el.prop('disabled'),
-                nearbyElementsText: this.getNearbyElementsText($el),
-                html: $el.clone().wrap('<div>').parent().html() // Get HTML for this specific element
-            });
+
+        if (element.tagName.toLowerCase() === 'select') {
+          interactiveItem.options = $el.find('option').map((_, option) => {
+            const $option = $(option);
+            return {
+              value: $option.attr('value'),
+              text: $option.text().trim(),
+              selected: $option.attr('selected') !== undefined
+            };
+          }).get();
         }
 
-        if ($el.is('a')) {
-            const text = $el.text().trim();
-            const ariaLabel = $el.attr('aria-label');
-            
-            if (text || ariaLabel) {
-                interactive.push({
-                    type: 'link',
-                    text: text,
-                    selector: selector,
-                    originalSelector: originalSelector,
-                    href: $el.attr('href'),
-                    id: $el.attr('id'),
-                    role: $el.attr('role'),
-                    'aria-label': ariaLabel,
-                    html: $el.clone().wrap('<div>').parent().html() // Get HTML for this specific element
-                });
-            }
+        interactive.push(interactiveItem);
+      }
+
+      if ($el.is('button, [role="button"]')) {
+        const buttonItem = {
+          type: 'button',
+          text: $el.text().trim(),
+          selector: selector,
+          originalSelector: originalSelector,
+          buttonType: $el.attr('type'),
+          id: $el.attr('id'),
+          role: $el.attr('role'),
+          'aria-label': $el.attr('aria-label'),
+          disabled: $el.prop('disabled'),
+          nearbyElementsText: this.getNearbyElementsText($el),
+          html: cleanHtml($el)
+        };
+
+        interactive.push(buttonItem);
+      }
+
+      if ($el.is('a')) {
+        const text = $el.text().trim();
+        const ariaLabel = $el.attr('aria-label');
+
+        if (text || ariaLabel) {
+          const linkItem = {
+            type: 'link',
+            text: text,
+            selector: selector,
+            originalSelector: originalSelector,
+            href: $el.attr('href'),
+            id: $el.attr('id'),
+            role: $el.attr('role'),
+            'aria-label': ariaLabel,
+            html: cleanHtml($el)
+          };
+
+          interactive.push(linkItem);
         }
+      }
 
-        const nearbyText = this.getNearbyElementsText($el);
+      const nearbyText = this.getNearbyElementsText($el);
 
-        // Process for content map
-        const directText = $el.clone().children().remove().end().text().trim();
-        if (directText) {
-            content.push({
-                type: element.tagName.toLowerCase() === 'a' ? 'link' : 'text',
-                content: directText,
-                tag: element.tagName.toLowerCase(),
-                selector: selector,
-                originalSelector: originalSelector,
-                nearbyText,
-                html: $el.clone().wrap('<div>').parent().html(), // Get HTML for this specific element
-                ...(element.tagName.toLowerCase() === 'a' && { href: $el.attr('href') })
-            });
+      // Process for content map
+      const directText = $el.clone().children().remove().end().text().trim();
+      if (directText) {
+        content.push({
+          type: element.tagName.toLowerCase() === 'a' ? 'link' : 'text',
+          content: directText,
+          tag: element.tagName.toLowerCase(),
+          selector: selector,
+          originalSelector: originalSelector,
+          nearbyText,
+          html: cleanHtml($el),
+          ...(element.tagName.toLowerCase() === 'a' && { href: $el.attr('href') })
+        });
+      }
+
+      if (element.tagName.toLowerCase() === 'img') {
+        const src = $el.attr('src');
+        if (src) {
+          content.push({
+            type: 'media',
+            mediaType: 'image',
+            src: src,
+            selector: selector,
+            originalSelector: originalSelector,
+            alt: $el.attr('alt'),
+            nearbyText,
+            html: cleanHtml($el)
+          });
         }
+      } else if (element.tagName.toLowerCase() === 'video') {
+        // Check for source elements within video
+        const sources = $el.find('source').map((_, sourceEl) => {
+          return {
+            src: $(sourceEl).attr('src'),
+            type: $(sourceEl).attr('type')
+          };
+        }).get();
 
-        if (element.tagName.toLowerCase() === 'img') {
-            const src = $el.attr('src');
-            if (src) {
-                content.push({
-                    type: 'media',
-                    mediaType: 'image',
-                    src: src,
-                    selector: selector,
-                    originalSelector: originalSelector,
-                    alt: $el.attr('alt'),
-                    nearbyText,
-                    html: $el.clone().wrap('<div>').parent().html() // Get HTML for this specific element
-                });
-            }
-        } else if (element.tagName.toLowerCase() === 'video') {
-            // Check for source elements within video
-            const sources = $el.find('source').map((_, sourceEl) => {
-                return {
-                    src: $(sourceEl).attr('src'),
-                    type: $(sourceEl).attr('type')
-                };
-            }).get();
+        const src = $el.attr('src');
+        const poster = $el.attr('poster');
 
-            const src = $el.attr('src');
-            const poster = $el.attr('poster');
-            
-            // Use src if available, otherwise use poster
-            if (src || poster) {
-                const $clone = $el.clone();
-                $clone.find('*').removeAttr('style'); // Remove style from element and all children
-                const cleanHtml = $clone.wrap('<div>').parent().html();
-
-                content.push({
-                    type: 'media',
-                    mediaType: 'video',
-                    src: src || poster,
-                    selector: selector,
-                    originalSelector: originalSelector,
-                    sources: sources.length > 0 ? sources : undefined,
-                    nearbyText,
-                    html: cleanHtml // Use cleaned HTML without styles
-                });
-            }
+        // Use src if available, otherwise use poster
+        if (src || poster) {
+          content.push({
+            type: 'media',
+            mediaType: 'video',
+            src: src || poster,
+            selector: selector,
+            originalSelector: originalSelector,
+            sources: sources.length > 0 ? sources : undefined,
+            nearbyText,
+            html: cleanHtml($el)
+          });
         }
+      }
     }
 
     // Process shadow DOM
     if (shadowDOM) {
-        shadowDOM.forEach((shadowTree) => {
-            const $shadow = cheerio.load(shadowTree.content);
-            const shadowMaps = this._generateMapsFromCheerio($shadow, null, null);
-            
-            // Process interactive elements
-            Object.keys(shadowMaps.interactive).forEach(key => {
-                shadowMaps.interactive[key].forEach(item => {
-                    const { selector, ...rest } = item;
-                    
-                    if (shadowTree.shadowTrees?.some(tree => 
-                        tree.hostElement.tagName.toLowerCase() === item.tag?.toLowerCase()
-                    )) {
-                        return;
-                    }
+      shadowDOM.forEach((shadowTree) => {
+        const $shadow = cheerio.load(shadowTree.content);
+        const shadowMaps = this._generateMapsFromCheerio($shadow, null, null);
 
-                    interactive[key].push({
-                        ...rest,
-                        hostSelector: shadowTree.hostElement.tagName,
-                        shadowPath: [this.cleanShadowSelector(item.selector)]
-                    });
-                });
-            });
+        // Process interactive elements - shadowMaps.interactive is an array, not an object
+        if (shadowMaps.interactive && Array.isArray(shadowMaps.interactive)) {
+          shadowMaps.interactive.forEach(item => {
+            const { selector, ...rest } = item;
 
-            // Process nested shadow DOMs
-            if (shadowTree.shadowTrees) {
-                shadowTree.shadowTrees.forEach(nestedShadow => {
-                    const $nestedShadow = cheerio.load(nestedShadow.content);
-                    const nestedMaps = this._generateMapsFromCheerio($nestedShadow, null, null);
-
-                    Object.keys(nestedMaps.interactive).forEach(key => {
-                        nestedMaps.interactive[key].forEach(item => {
-                            const { selector, ...rest } = item;
-                            interactive[key].push({
-                                ...rest,
-                                hostSelector: shadowTree.hostElement.tagName,
-                                shadowPath: [
-                                    nestedShadow.hostElement.tagName,
-                                    this.cleanShadowSelector(item.selector)
-                                ]
-                            });
-                        });
-                    });
-                });
+            if (shadowTree.shadowTrees?.some(tree =>
+              tree.hostElement.tagName.toLowerCase() === item.tag?.toLowerCase()
+            )) {
+              return;
             }
-        });
+
+            interactive.push({
+              ...rest,
+              hostSelector: shadowTree.hostElement.tagName,
+              shadowPath: [this.cleanShadowSelector(item.selector)]
+            });
+          });
+        }
+
+        // Process nested shadow DOMs
+        if (shadowTree.shadowTrees) {
+          shadowTree.shadowTrees.forEach(nestedShadow => {
+            const $nestedShadow = cheerio.load(nestedShadow.content);
+            const nestedMaps = this._generateMapsFromCheerio($nestedShadow, null, null);
+
+            if (nestedMaps.interactive && Array.isArray(nestedMaps.interactive)) {
+              nestedMaps.interactive.forEach(item => {
+                const { selector, ...rest } = item;
+                interactive.push({
+                  ...rest,
+                  hostSelector: shadowTree.hostElement.tagName,
+                  shadowPath: [
+                    nestedShadow.hostElement.tagName,
+                    this.cleanShadowSelector(item.selector)
+                  ]
+                });
+              });
+            }
+          });
+        }
+      });
     }
 
     // Process iframes
     if (iframeData) {
-        iframeData.forEach((iframe) => {
-            const $iframe = cheerio.load(iframe.content);
-            const iframeMaps = this._generateMapsFromCheerio($iframe, null, null, `iframe[src="${iframe.src}"]`);
-            
-            Object.keys(iframeMaps.interactive).forEach(key => {
-                interactive[key].push(...iframeMaps.interactive[key]);
-            });
-            content.push(...iframeMaps.content);
-        });
+      iframeData.forEach((iframe) => {
+        const $iframe = cheerio.load(iframe.content);
+        const iframeMaps = this._generateMapsFromCheerio($iframe, null, null, `iframe[src="${iframe.src}"]`);
+
+        // iframeMaps.interactive is an array, not an object
+        if (iframeMaps.interactive && Array.isArray(iframeMaps.interactive)) {
+          interactive.push(...iframeMaps.interactive);
+        }
+        if (iframeMaps.content && Array.isArray(iframeMaps.content)) {
+          content.push(...iframeMaps.content);
+        }
+      });
     }
-    
+
     return { interactive, content };
   }
 
@@ -996,7 +1003,7 @@ class PageSnapshot {
     }
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    
+
     if (newItems.content.length > 0) {
       const contentPath = path.join(testDir, `new_content_${timestamp}.json`);
       fs.writeFileSync(contentPath, JSON.stringify(newItems.content, null, 2), 'utf8');
@@ -1016,7 +1023,7 @@ class PageSnapshot {
     const cleanedMap = contentMap.map(({ originalSelector, html, selector, ...rest }) => {
       return removeSelectors ? rest : { selector, ...rest };
     });
-    
+
     const result = condensed ? PageSnapshot.condenseContentMap(cleanedMap, !removeSelectors) : cleanedMap;
     return stringify ? JSON.stringify(result, null, 2) : result;
   }
@@ -1034,18 +1041,17 @@ class PageSnapshot {
       return await this.page.evaluate((sel) => {
         const element = document.querySelector(sel);
         if (!element) return false;
-        
+
         const style = window.getComputedStyle(element);
         const rect = element.getBoundingClientRect();
-        
+
         return !!(
           element.offsetWidth > 0 &&
-          element.offsetHeight > 0 &&
-          style.display !== 'none' &&
-          style.visibility !== 'hidden' &&
-          style.opacity !== '0' &&
-          rect.width > 0 &&
-          rect.height > 0
+          element.offsetHeight > 0
+          // &&
+          // style.display !== 'none' &&
+          // style.visibility !== 'hidden' &&
+          // style.opacity !== '0' 
         );
       }, selector);
     } catch (error) {
@@ -1068,7 +1074,7 @@ if (require.main === module) {
       console.log(`Testing PageSnapshot with URL: ${url}`);
 
       console.log('Launching browser...');
-      browser = await puppeteer.launch({ 
+      browser = await puppeteer.launch({
         headless: false,
         defaultViewport: {
           width: 1280,
@@ -1083,10 +1089,10 @@ if (require.main === module) {
       console.log('Taking page snapshot...');
       const snapshot = new PageSnapshot(page);
       const result = await snapshot.captureSnapshot();
-      
+
       console.log('\nSnapshot captured successfully!');
       console.log('Files saved with timestamp:', result.timestamp);
-      
+
       // Set up periodic content checking
       console.log('\nStarting periodic content check...');
       const checkInterval = setInterval(async () => {
@@ -1110,7 +1116,7 @@ if (require.main === module) {
         }
         process.exit(0);
       });
-   
+
     } catch (error) {
       console.error('Test failed:', error);
       process.exit(1);

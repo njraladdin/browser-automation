@@ -497,7 +497,7 @@ ${step.code}${extractedDataSummary}`;
       }
 
       console.log('\nRETURNING - Final step code:', this.automationSteps[stepIndex].code);
-      console.log(this.automationSteps)
+
       return { 
         success: true, 
         lastExecutedStep: this.lastExecutedStep,
